@@ -1,7 +1,7 @@
 pub mod gtk_ui;
 
-use crate::logic::Logic;
+use crate::{config::Config, logic::Logic, settings::SettingsManager};
 
 pub trait Ui {
-    fn run(logic: Logic);
+    fn run(config: Config, settings: SettingsManager);
 }

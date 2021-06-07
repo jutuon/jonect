@@ -1,30 +1,62 @@
+mod app;
+
+use self::app::App;
+
 use super::Ui;
 
-use crate::logic::Logic;
+use crate::logic::{Event, Logic};
+use crate::{config::Config, settings::SettingsManager};
 
 use gio::{prelude::*, ApplicationFlags};
+use glib::{MainContext, Sender};
 use gtk::{prelude::*, ApplicationWindow, Label};
+
+//use futures::channel::mpsc::{self, Sender};
+
+use app::UiEvent;
+
+pub const SEND_ERROR: &str = "Error: UiEvent channel is broken.";
 
 pub struct GtkUi;
 
 impl Ui for GtkUi {
-    fn run(logic: Logic) {
-        let gtk_app = gtk::Application::new(
-            Some("com.github.jutuon.multidevice-server"),
-            ApplicationFlags::FLAGS_NONE,
-        )
-        .expect("GTK application creation failed");
+    fn run(config: Config, settings: SettingsManager) {
+        glib::set_program_name("Multidevice".into());
+        glib::set_application_name("Multidevice");
 
-        gtk_app.connect_activate(|app| {
-            let window = ApplicationWindow::new(app);
-            window.set_title("Multidevice");
-            window.set_default_size(640, 480);
-            let text = Label::new(Some("Multidevice"));
-            window.add(&text);
+        gtk::init().expect("GTK initialization failed.");
 
-            window.show_all();
+        let (sender, receiver) = MainContext::channel::<UiEvent>(glib::PRIORITY_DEFAULT);
+
+        let logic = Logic::new(config, settings, LogicEventSender::new(sender.clone()));
+        let mut app = App::new(sender, logic);
+
+        receiver.attach(None, move |event| {
+            match event {
+                UiEvent::ButtonClicked(id) => app.handle_button(id),
+                UiEvent::CloseMainWindow => app.handle_close_main_window(),
+                UiEvent::LogicEvent(e) => app.handle_logic_event(e),
+            }
+
+            glib::Continue(true)
         });
 
-        gtk_app.run(&[]);
+        gtk::main();
+    }
+}
+
+pub struct LogicEventSender {
+    sender: Sender<UiEvent>,
+}
+
+impl LogicEventSender {
+    pub fn new(sender: Sender<UiEvent>) -> Self {
+        Self { sender }
+    }
+
+    pub fn send(&mut self, event: Event) {
+        self.sender
+            .send(UiEvent::LogicEvent(event))
+            .expect(SEND_ERROR);
     }
 }

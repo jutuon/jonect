@@ -505,6 +505,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "gio",
+ "glib",
  "gtk",
  "libpulse-binding",
  "libpulse-simple-binding",

@@ -28,3 +28,7 @@ features = ["v3_16"]
 # with gtk.
 version = ""
 features = ["v2_44"]
+
+[dependencies.glib]
+version = ""
+features = ["v2_44"]

@@ -28,7 +28,5 @@ fn main() {
 
     println!("{:#?}", settings.get());
 
-    let logic = Logic::new(config, settings);
-
-    GtkUi::run(logic);
+    GtkUi::run(config, settings);
 }
