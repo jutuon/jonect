@@ -36,6 +36,11 @@ impl Ui for GtkUi {
                 UiEvent::ButtonClicked(id) => app.handle_button(id),
                 UiEvent::CloseMainWindow => app.handle_close_main_window(),
                 UiEvent::LogicEvent(e) => app.handle_logic_event(e),
+                UiEvent::Quit => {
+                    app.quit();
+                    gtk::main_quit();
+                    return glib::Continue(false);
+                }
             }
 
             glib::Continue(true)

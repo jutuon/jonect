@@ -10,6 +10,7 @@ pub enum UiEvent {
     ButtonClicked(&'static str),
     LogicEvent(Event),
     CloseMainWindow,
+    Quit,
 }
 
 pub struct App {
@@ -57,8 +58,7 @@ impl App {
 
     pub fn handle_close_main_window(&mut self) {
         self.main_window.close();
-        gtk::main_quit();
-        // TODO: Close server.
+        self.logic.request_quit();
     }
 
     pub fn handle_logic_event(&mut self, e: Event) {
@@ -67,15 +67,22 @@ impl App {
                 self.text.set_text(&s);
                 println!("{}", s);
             }
+            Event::CloseProgram => {
+                self.sender.send(UiEvent::Quit).expect(SEND_ERROR);
+            }
         }
     }
 
     pub fn handle_button(&mut self, id: &'static str) {
         match id {
             "test" => {
-                println!("{}", id);
+                self.logic.send_message();
             }
             _ => (),
         }
+    }
+
+    pub fn quit(&mut self) {
+        self.logic.join_logic_thread();
     }
 }
