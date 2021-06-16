@@ -460,22 +460,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "libpulse-simple-binding"
+name = "libpulse-glib-binding"
 version = "2.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a574975292db859087c3957b9182f7d53278553f06bddaa2099c90e4ac3a0ee0"
+checksum = "830bc64de094b77e5dc9ee1f6ad885960aac3c01963ae59d0bf3af804c29a8b5"
 dependencies = [
+ "glib",
+ "glib-sys",
  "libpulse-binding",
- "libpulse-simple-sys",
- "libpulse-sys",
+ "libpulse-mainloop-glib-sys",
 ]
 
 [[package]]
-name = "libpulse-simple-sys"
+name = "libpulse-mainloop-glib-sys"
 version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "468cf582b7b022c0d1b266fefc7fc8fa7b1ddcb61214224f2f105c95a9c2d5c1"
+checksum = "95ada288e2969194b25a940394fd38a07a229d36467530f1bf8bcd3a410a1006"
 dependencies = [
+ "glib-sys",
  "libpulse-sys",
  "pkg-config",
 ]
@@ -508,7 +510,7 @@ dependencies = [
  "glib",
  "gtk",
  "libpulse-binding",
- "libpulse-simple-binding",
+ "libpulse-glib-binding",
  "serde",
  "toml",
 ]

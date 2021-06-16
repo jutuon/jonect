@@ -18,6 +18,7 @@ pub struct App {
     logic: Logic,
     text: Label,
     main_window: Window,
+    logic_running: bool,
 }
 
 impl App {
@@ -53,6 +54,7 @@ impl App {
             logic,
             text,
             main_window: window,
+            logic_running: false,
         }
     }
 
@@ -62,7 +64,19 @@ impl App {
     }
 
     pub fn handle_logic_event(&mut self, e: Event) {
+        if !self.logic_running {
+            match e {
+                Event::InitEnd => {
+                    self.logic_running = true;
+                }
+                _ => (),
+            }
+
+            return;
+        }
+
         match e {
+            Event::InitStart | Event::InitEnd => (),
             Event::Message(s) => {
                 self.text.set_text(&s);
                 println!("{}", s);

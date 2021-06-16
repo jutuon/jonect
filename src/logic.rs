@@ -1,3 +1,4 @@
+mod audio;
 mod server;
 
 use std::{
@@ -11,6 +12,8 @@ use self::server::{Server, ServerEvent};
 
 #[derive(Debug)]
 pub enum Event {
+    InitStart,
+    InitEnd,
     Message(String),
     CloseProgram,
 }
@@ -26,8 +29,9 @@ impl Logic {
     pub fn new(config: Config, settings: SettingsManager, sender: LogicEventSender) -> Self {
         let (server_event_sender, receiver) = mpsc::channel();
 
+        let s = server_event_sender.clone();
         let logic_thread = Some(std::thread::spawn(move || {
-            Server::new(sender, receiver).run();
+            Server::new(sender, receiver, s).run();
         }));
 
         Self {
