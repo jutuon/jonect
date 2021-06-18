@@ -6,6 +6,7 @@ use super::{
 };
 
 use crate::{
+    config::Config,
     logic::audio::AudioServerEvent,
     ui::gtk_ui::{LogicEventSender, SEND_ERROR},
 };
@@ -44,6 +45,7 @@ pub struct Server {
     sender: LogicEventSender,
     receiver: Receiver<ServerEvent>,
     server_event_sender: Sender<ServerEvent>,
+    config: Config,
 }
 
 impl Server {
@@ -51,11 +53,13 @@ impl Server {
         sender: LogicEventSender,
         receiver: Receiver<ServerEvent>,
         server_event_sender: Sender<ServerEvent>,
+        config: Config,
     ) -> Self {
         Self {
             sender,
             receiver,
             server_event_sender,
+            config,
         }
     }
 
@@ -78,6 +82,10 @@ impl Server {
         self.sender.send(Event::InitEnd);
 
         let mut thread_status = ServerStatus::new();
+
+        if let Some(source_name) = self.config.pa_source_name.clone() {
+            audio_event_sender.send(AudioServerEvent::StartRecording { source_name });
+        }
 
         loop {
             let event = self

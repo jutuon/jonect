@@ -30,8 +30,9 @@ impl Logic {
         let (server_event_sender, receiver) = mpsc::channel();
 
         let s = server_event_sender.clone();
+        let c = config.clone();
         let logic_thread = Some(std::thread::spawn(move || {
-            Server::new(sender, receiver, s).run();
+            Server::new(sender, receiver, s, c).run();
         }));
 
         Self {
