@@ -13,6 +13,8 @@ use crate::{
 
 use std::sync::mpsc::{self, Receiver, Sender};
 
+use tokio::runtime::Runtime;
+
 #[derive(Debug)]
 pub enum ServerEvent {
     RequestQuit,
@@ -41,14 +43,14 @@ impl ServerStatus {
     }
 }
 
-pub struct Server {
+pub struct AsyncServer {
     sender: LogicEventSender,
     receiver: Receiver<ServerEvent>,
     server_event_sender: Sender<ServerEvent>,
     config: Config,
 }
 
-impl Server {
+impl AsyncServer {
     pub fn new(
         sender: LogicEventSender,
         receiver: Receiver<ServerEvent>,
@@ -63,10 +65,8 @@ impl Server {
         }
     }
 
-    pub fn run(&mut self) {
+    pub async fn run(&mut self) {
         let mut audio_thread = AudioThread::run(self.server_event_sender.clone());
-
-        self.sender.send(Event::InitStart);
 
         let mut audio_event_sender = loop {
             let event = self
@@ -120,5 +120,31 @@ impl Server {
                 }
             }
         }
+    }
+}
+
+pub struct Server;
+
+impl Server {
+    pub fn run(
+        mut sender: LogicEventSender,
+        receiver: Receiver<ServerEvent>,
+        server_event_sender: Sender<ServerEvent>,
+        config: Config,
+    ) {
+        sender.send(Event::InitStart);
+
+        let rt = match Runtime::new() {
+            Ok(rt) => rt,
+            Err(e) => {
+                sender.send(Event::InitError);
+                eprintln!("{}", e);
+                return;
+            }
+        };
+
+        let mut server = AsyncServer::new(sender, receiver, server_event_sender, config);
+
+        rt.block_on(server.run());
     }
 }

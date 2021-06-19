@@ -10,6 +10,7 @@ edition = "2018"
 clap = "2.33.3"
 toml = "0.5.8"
 serde = { version = "1.0.126", features = ["derive"] }
+tokio = { version = "1.7.1", features = ["full"] }
 
 [dependencies.pulse]
 version = "2.23.1"

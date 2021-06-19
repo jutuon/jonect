@@ -13,6 +13,7 @@ use self::server::{Server, ServerEvent};
 #[derive(Debug)]
 pub enum Event {
     InitStart,
+    InitError,
     InitEnd,
     Message(String),
     CloseProgram,
@@ -32,7 +33,7 @@ impl Logic {
         let s = server_event_sender.clone();
         let c = config.clone();
         let logic_thread = Some(std::thread::spawn(move || {
-            Server::new(sender, receiver, s, c).run();
+            Server::run(sender, receiver, s, c);
         }));
 
         Self {

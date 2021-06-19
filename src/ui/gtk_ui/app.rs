@@ -77,6 +77,9 @@ impl App {
 
         match e {
             Event::InitStart | Event::InitEnd => (),
+            Event::InitError => {
+                self.sender.send(UiEvent::Quit).expect(SEND_ERROR);
+            }
             Event::Message(s) => {
                 self.text.set_text(&s);
                 println!("{}", s);
