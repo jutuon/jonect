@@ -1,7 +1,6 @@
 use std::{
     any::Any,
     collections::VecDeque,
-    sync::mpsc::{self},
     thread::JoinHandle,
     time::{Duration, Instant},
 };
@@ -18,14 +17,14 @@ use pulse::{
 };
 use pulse_glib::Mainloop;
 
-use super::server::ServerEvent;
+use super::server::{ServerEvent, ServerEventSender};
 
 pub struct AudioThread {
     audio_thread: Option<JoinHandle<()>>,
 }
 
 impl AudioThread {
-    pub fn run(sender: mpsc::Sender<ServerEvent>) -> Self {
+    pub fn run(sender: ServerEventSender) -> Self {
         let audio_thread = Some(std::thread::spawn(move || {
             AudioServer::new(sender).run();
         }));
@@ -358,11 +357,11 @@ impl PAState {
 
 pub struct AudioServer {
     context: MainContext,
-    server_event_sender: mpsc::Sender<ServerEvent>,
+    server_event_sender: ServerEventSender,
 }
 
 impl AudioServer {
-    fn new(server_event_sender: mpsc::Sender<ServerEvent>) -> Self {
+    fn new(server_event_sender: ServerEventSender) -> Self {
         let mut context = MainContext::new();
         if !context.acquire() {
             panic!("context.acquire() failed");
@@ -382,7 +381,7 @@ impl AudioServer {
 
         // Send init event.
         let init_event = ServerEvent::AudioServerInit(sender.clone());
-        self.server_event_sender.send(init_event).unwrap();
+        self.server_event_sender.send(init_event);
 
         // Init PulseAudio context.
         let mut pa_state = PAState::new(&mut self.context, sender);
@@ -415,7 +414,6 @@ impl AudioServer {
         glib_main_loop.run();
 
         self.server_event_sender
-            .send(ServerEvent::AudioServerClosed)
-            .unwrap();
+            .send(ServerEvent::AudioServerClosed);
     }
 }

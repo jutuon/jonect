@@ -8,7 +8,7 @@ use std::{
 
 use crate::{config::Config, settings::SettingsManager, ui::gtk_ui::LogicEventSender};
 
-use self::server::{Server, ServerEvent};
+use self::server::{Server, ServerEvent, ServerEventSender};
 
 #[derive(Debug)]
 pub enum Event {
@@ -23,12 +23,12 @@ pub struct Logic {
     config: Config,
     settings: SettingsManager,
     logic_thread: Option<JoinHandle<()>>,
-    server_event_sender: Sender<ServerEvent>,
+    server_event_sender: ServerEventSender,
 }
 
 impl Logic {
     pub fn new(config: Config, settings: SettingsManager, sender: LogicEventSender) -> Self {
-        let (server_event_sender, receiver) = mpsc::channel();
+        let (server_event_sender, receiver) = Server::create_server_event_channel();
 
         let s = server_event_sender.clone();
         let c = config.clone();
@@ -46,14 +46,12 @@ impl Logic {
 
     pub fn send_message(&mut self) {
         self.server_event_sender
-            .send(ServerEvent::SendMessage)
-            .unwrap();
+            .send(ServerEvent::SendMessage);
     }
 
     pub fn request_quit(&mut self) {
         self.server_event_sender
-            .send(ServerEvent::RequestQuit)
-            .unwrap();
+            .send(ServerEvent::RequestQuit);
     }
 
     pub fn join_logic_thread(&mut self) {

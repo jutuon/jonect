@@ -11,7 +11,7 @@ use crate::{
     ui::gtk_ui::{LogicEventSender, SEND_ERROR},
 };
 
-use std::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc;
 
 use tokio::runtime::Runtime;
 
@@ -22,6 +22,23 @@ pub enum ServerEvent {
     AudioServerInit(AudioServerEventSender),
     AudioServerClosed,
     QuitProgressCheck,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServerEventSender {
+    sender: mpsc::UnboundedSender<ServerEvent>,
+}
+
+impl ServerEventSender {
+    pub fn new(sender: mpsc::UnboundedSender<ServerEvent>) -> Self {
+        Self {
+            sender,
+        }
+    }
+
+    pub fn send(&mut self, event: ServerEvent) {
+        self.sender.send(event).unwrap();
+    }
 }
 
 pub struct ServerStatus {
@@ -45,16 +62,16 @@ impl ServerStatus {
 
 pub struct AsyncServer {
     sender: LogicEventSender,
-    receiver: Receiver<ServerEvent>,
-    server_event_sender: Sender<ServerEvent>,
+    receiver: mpsc::UnboundedReceiver<ServerEvent>,
+    server_event_sender: ServerEventSender,
     config: Config,
 }
 
 impl AsyncServer {
     pub fn new(
         sender: LogicEventSender,
-        receiver: Receiver<ServerEvent>,
-        server_event_sender: Sender<ServerEvent>,
+        receiver: mpsc::UnboundedReceiver<ServerEvent>,
+        server_event_sender: ServerEventSender,
         config: Config,
     ) -> Self {
         Self {
@@ -70,8 +87,7 @@ impl AsyncServer {
 
         let mut audio_event_sender = loop {
             let event = self
-                .receiver
-                .recv()
+                .receiver.recv().await
                 .expect("Error: ServerEvent channel broken, no senders");
 
             if let ServerEvent::AudioServerInit(e) = event {
@@ -89,8 +105,7 @@ impl AsyncServer {
 
         loop {
             let event = self
-                .receiver
-                .recv()
+                .receiver.recv().await
                 .expect("Error: ServerEvent channel broken, no senders");
 
             //println!("{:?}", event);
@@ -103,8 +118,7 @@ impl AsyncServer {
                     audio_thread.join();
                     thread_status.set_audio_server_status_to_closed();
                     self.server_event_sender
-                        .send(ServerEvent::QuitProgressCheck)
-                        .unwrap();
+                        .send(ServerEvent::QuitProgressCheck);
                 }
                 ServerEvent::QuitProgressCheck => {
                     if thread_status.all_threads_are_closed() {
@@ -128,8 +142,8 @@ pub struct Server;
 impl Server {
     pub fn run(
         mut sender: LogicEventSender,
-        receiver: Receiver<ServerEvent>,
-        server_event_sender: Sender<ServerEvent>,
+        receiver: mpsc::UnboundedReceiver<ServerEvent>,
+        server_event_sender: ServerEventSender,
         config: Config,
     ) {
         sender.send(Event::InitStart);
@@ -146,5 +160,11 @@ impl Server {
         let mut server = AsyncServer::new(sender, receiver, server_event_sender, config);
 
         rt.block_on(server.run());
+    }
+
+    pub fn create_server_event_channel() -> (ServerEventSender, mpsc::UnboundedReceiver<ServerEvent>) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+
+        (ServerEventSender::new(sender), receiver)
     }
 }
