@@ -1,4 +1,8 @@
+mod device;
+
 use std::{thread, time::Duration};
+
+use self::device::{DeviceManager, DeviceManagerError};
 
 use super::{
     audio::{AudioServerEventSender, AudioThread},
@@ -22,6 +26,8 @@ pub enum ServerEvent {
     AudioServerInit(AudioServerEventSender),
     AudioServerClosed,
     QuitProgressCheck,
+    DeviceManagerClosed,
+    DeviceManagerError(DeviceManagerError),
 }
 
 #[derive(Debug, Clone)]
@@ -42,21 +48,29 @@ impl ServerEventSender {
 }
 
 pub struct ServerStatus {
-    audio_server: bool,
+    audio_server_is_running: bool,
+    device_manager_is_running: bool,
 }
 
 impl ServerStatus {
     /// Creates new ServerStatus with status running.
     pub fn new() -> Self {
-        Self { audio_server: true }
+        Self {
+            audio_server_is_running: true,
+            device_manager_is_running: true
+        }
     }
 
     pub fn set_audio_server_status_to_closed(&mut self) {
-        self.audio_server = false;
+        self.audio_server_is_running = false;
     }
 
-    pub fn all_threads_are_closed(&self) -> bool {
-        !self.audio_server
+    pub fn set_device_manager_status_to_closed(&mut self) {
+        self.device_manager_is_running = false;
+    }
+
+    pub fn all_server_components_are_closed(&self) -> bool {
+        !self.audio_server_is_running && !self.device_manager_is_running
     }
 }
 
@@ -95,6 +109,19 @@ impl AsyncServer {
             }
         };
 
+        let (mut dm_sender, dm_receiver) = DeviceManager::create_device_event_channel();
+        let dm_result = DeviceManager::new(self.server_event_sender.clone(), dm_receiver).await;
+        let device_manager = match dm_result {
+            Err(e) => {
+                self.sender.send(Event::InitError);
+                eprintln!("Device manager error: {:?}", e);
+                return;
+            }
+            Ok(dm) => dm,
+        };
+
+        let mut dm_task = Some(tokio::spawn(device_manager.run()));
+
         self.sender.send(Event::InitEnd);
 
         let mut thread_status = ServerStatus::new();
@@ -113,6 +140,7 @@ impl AsyncServer {
             match event {
                 ServerEvent::RequestQuit => {
                     audio_event_sender.send(AudioServerEvent::RequestQuit);
+                    dm_sender.send(device::DeviceManagerEvent::RequestQuit);
                 }
                 ServerEvent::AudioServerClosed => {
                     audio_thread.join();
@@ -120,8 +148,14 @@ impl AsyncServer {
                     self.server_event_sender
                         .send(ServerEvent::QuitProgressCheck);
                 }
+                ServerEvent::DeviceManagerClosed => {
+                    dm_task.take().unwrap().await.expect("Device manager task join error.");
+                    thread_status.set_device_manager_status_to_closed();
+                    self.server_event_sender
+                        .send(ServerEvent::QuitProgressCheck);
+                }
                 ServerEvent::QuitProgressCheck => {
-                    if thread_status.all_threads_are_closed() {
+                    if thread_status.all_server_components_are_closed() {
                         self.sender.send(Event::CloseProgram);
                         return;
                     }
@@ -131,6 +165,9 @@ impl AsyncServer {
                 }
                 ServerEvent::AudioServerInit(_) => {
                     panic!("Error: multiple AudioServerInit events detected")
+                }
+                ServerEvent::DeviceManagerError(e) => {
+                    eprintln!("DeviceManagerError {:?}", e);
                 }
             }
         }
