@@ -1,12 +1,20 @@
 mod protocol;
 
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}, sync::mpsc::{self, Receiver, UnboundedReceiver}};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    sync::{mpsc::{self, Receiver, UnboundedReceiver}, Notify},
+};
+use tokio_stream::{Stream, StreamExt, wrappers::UnboundedReceiverStream};
+use async_stream::stream;
 
-use std::{convert::TryInto, io, num::TryFromIntError};
+use std::{convert::TryInto, io, num::TryFromIntError, sync::Arc};
+
+use crate::logic::server::DMEvent;
 
 use self::protocol::{ServerInfo};
 
-use super::{ServerEvent, ServerEventSender};
+use super::{CloseComponent, ServerEvent, ServerEventSender};
 
 
 pub struct Device {
@@ -71,19 +79,13 @@ pub enum DeviceManagerError {
     MessageSendDataLengthError(TryFromIntError),
 }
 
-
 pub struct DeviceManager {
     device: Option<Device>,
     listener: TcpListener,
-    server_event_sender: ServerEventSender,
-    receiver: UnboundedReceiver<DeviceManagerEvent>,
 }
 
 impl DeviceManager {
-    pub async fn new(
-        server_event_sender: ServerEventSender,
-        receiver: UnboundedReceiver<DeviceManagerEvent>
-    ) -> Result<Self, DeviceManagerError> {
+    pub async fn new() -> Result<Self, DeviceManagerError> {
         let listener = TcpListener::bind("127.0.0.1:8080")
             .await
             .map_err(DeviceManagerError::SocketListenerCreationError)?;
@@ -91,8 +93,6 @@ impl DeviceManager {
         Ok(Self {
             device: None,
             listener,
-            server_event_sender,
-            receiver,
         })
     }
 
@@ -114,32 +114,54 @@ impl DeviceManager {
         Ok(())
     }
 
-    pub async fn run(mut self) {
-        /*
-        match self.start_device_connection().await {
-            Err(e) => {
-                self.server_event_sender.send(ServerEvent::DeviceManagerError(e));
-                self.server_event_sender.send(ServerEvent::DeviceManagerClosed);
-                return;
+    async fn handle_event(&mut self, event: DeviceManagerEvent) -> CloseComponent {
+        match event {
+            DeviceManagerEvent::RequestQuit => {
+                return CloseComponent::Yes;
             }
-            Ok(()) => (),
+            DeviceManagerEvent::Message(_) => (),
         }
-         */
 
-        loop {
-            match self.receiver.recv().await.unwrap() {
-                DeviceManagerEvent::RequestQuit => {
-                    self.server_event_sender.send(ServerEvent::DeviceManagerClosed);
-                    return;
+        CloseComponent::No
+    }
+
+    pub fn event_stream(mut self, mut receiver: UnboundedReceiverStream<DeviceManagerEvent>) -> impl Stream<Item = DMEvent> {
+        stream! {
+            tokio::select! {
+                e_next = receiver.next() => {
+                    let e = e_next.expect("Logic bug: server task channel broken.");
+                    if let CloseComponent::Yes = self.handle_event(e).await {
+                        return;
+                    }
                 }
-                DeviceManagerEvent::Message(_) => (),
+                connection_result = self.start_device_connection() => {
+                    match connection_result {
+                        Err(e) => {
+                            yield DMEvent::DeviceManagerError(e);
+                            // Close device manager.
+                            return;
+                        }
+                        Ok(()) => (),
+                    }
+                }
+            };
+
+            loop {
+                tokio::select! {
+                    e_next = receiver.next() => {
+                        let e = e_next.expect("Logic bug: server task channel broken.");
+                        if let CloseComponent::Yes = self.handle_event(e).await {
+                            return;
+                        }
+                    }
+                }
             }
         }
     }
 
-    pub fn create_device_event_channel() -> (DeviceManagerEventSender, mpsc::UnboundedReceiver<DeviceManagerEvent>) {
+    pub fn create_device_event_channel() -> (DeviceManagerEventSender, UnboundedReceiverStream<DeviceManagerEvent>) {
         let (sender, receiver) = mpsc::unbounded_channel();
 
-        (DeviceManagerEventSender::new(sender), receiver)
+        (DeviceManagerEventSender::new(sender), UnboundedReceiverStream::new(receiver))
     }
 }

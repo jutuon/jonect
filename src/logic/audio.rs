@@ -17,14 +17,14 @@ use pulse::{
 };
 use pulse_glib::Mainloop;
 
-use super::server::{ServerEvent, ServerEventSender};
+use super::server::{AudioEvent, AudioEventSender, ServerEvent, ServerEventSender};
 
 pub struct AudioThread {
     audio_thread: Option<JoinHandle<()>>,
 }
 
 impl AudioThread {
-    pub fn run(sender: ServerEventSender) -> Self {
+    pub fn run(sender: AudioEventSender) -> Self {
         let audio_thread = Some(std::thread::spawn(move || {
             AudioServer::new(sender).run();
         }));
@@ -357,11 +357,11 @@ impl PAState {
 
 pub struct AudioServer {
     context: MainContext,
-    server_event_sender: ServerEventSender,
+    server_event_sender: AudioEventSender,
 }
 
 impl AudioServer {
-    fn new(server_event_sender: ServerEventSender) -> Self {
+    fn new(server_event_sender: AudioEventSender) -> Self {
         let mut context = MainContext::new();
         if !context.acquire() {
             panic!("context.acquire() failed");
@@ -380,7 +380,7 @@ impl AudioServer {
         let sender = AudioServerEventSender::new(sender);
 
         // Send init event.
-        let init_event = ServerEvent::AudioServerInit(sender.clone());
+        let init_event = AudioEvent::AudioServerInit(sender.clone());
         self.server_event_sender.send(init_event);
 
         // Init PulseAudio context.
@@ -412,8 +412,5 @@ impl AudioServer {
         });
 
         glib_main_loop.run();
-
-        self.server_event_sender
-            .send(ServerEvent::AudioServerClosed);
     }
 }
