@@ -1,5 +1,6 @@
 mod audio;
 mod server;
+pub mod client;
 
 use std::{
     sync::mpsc::{self, Sender},

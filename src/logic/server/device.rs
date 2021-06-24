@@ -1,4 +1,4 @@
-mod protocol;
+pub mod protocol;
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -37,7 +37,9 @@ impl Device {
             .try_into()
             .map_err(DeviceManagerError::MessageSendDataLengthError)?;
 
-        self.connection.write_all(&data_len.to_le_bytes())
+        let data_len = data_len as u32;
+
+        self.connection.write_all(&data_len.to_be_bytes())
             .await
             .map_err(DeviceManagerError::MessageSendError)?;
 

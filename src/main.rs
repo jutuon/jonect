@@ -5,10 +5,7 @@ mod ui;
 
 use std::process;
 
-use crate::{
-    logic::Logic,
-    ui::{gtk_ui::GtkUi, Ui},
-};
+use crate::{logic::{Logic, client::TestClient}, ui::{gtk_ui::GtkUi, Ui}};
 
 fn main() {
     let config = config::parse_cmd_args();
@@ -16,6 +13,11 @@ fn main() {
     if config.test {
         println!("test");
         process::exit(0);
+    }
+
+    if let Some(config) = config.test_client_config {
+        TestClient::new(config).run();
+        return;
     }
 
     let settings = match settings::SettingsManager::load_or_create_settings_file() {

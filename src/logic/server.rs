@@ -1,4 +1,4 @@
-mod device;
+pub mod device;
 
 use std::{sync::Arc, thread, time::Duration};
 
