@@ -1,11 +1,12 @@
 //! Test client
 
-use tokio::{net::TcpStream, runtime::Runtime, io::AsyncReadExt};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream, runtime::Runtime};
 
-use crate::config::TestClientConfig;
+use crate::{config::TestClientConfig, logic::server::device::protocol::ServerMessage};
 
-use super::server::device::protocol::{ProtocolDeserializer, ServerInfo};
+use super::server::device::{DeviceConnection, protocol::{ClientInfo, ClientMessage, ProtocolDeserializer, ServerInfo}};
 
+use std::convert::TryInto;
 
 pub struct TestClient {
     config: TestClientConfig,
@@ -44,6 +45,18 @@ impl AsyncClient {
     pub async fn run(self) {
         let mut stream = TcpStream::connect(self.config.address).await.unwrap();
 
+        let message = ClientMessage::ClientInfo(ClientInfo::new("test"));
+
+        let data = serde_json::to_vec(&message).unwrap();
+        let data_len: i32 = data
+            .len()
+            .try_into()
+            .unwrap();
+        let data_len = data_len as u32;
+
+        stream.write_all(&data_len.to_be_bytes()).await.unwrap();
+        stream.write_all(&data).await.unwrap();
+
         loop {
             let message_len = stream.read_u32().await.unwrap();
             if message_len > i32::max_value() as u32 {
@@ -51,8 +64,8 @@ impl AsyncClient {
             }
 
             let mut deserializer = ProtocolDeserializer::new();
-            let message: ServerInfo = deserializer
-                .read_async(&mut stream, message_len)
+            let message: ServerMessage = deserializer
+                .read_server_message(&mut stream, message_len)
                 .await
                 .unwrap();
 
