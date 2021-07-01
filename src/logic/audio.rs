@@ -412,5 +412,7 @@ impl AudioServer {
         });
 
         glib_main_loop.run();
+
+        self.server_event_sender.send(AudioEvent::AudioServerClosed);
     }
 }
