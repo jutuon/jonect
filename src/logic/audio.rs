@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use glib::{MainContext, MainLoop, Sender};
+use gtk::glib::{MainContext, MainLoop, Sender};
 
 use pulse::{
     callbacks::ListResult,
@@ -355,28 +355,31 @@ impl PAState {
     }
 }
 
+/// AudioServer which handles connection to the PulseAudio.
+///
+/// Create a new thread for running an AudioServer. The reason for this is that
+/// AudioServer will modify glib thread default MainContext.
 pub struct AudioServer {
-    context: MainContext,
     server_event_sender: AudioEventSender,
 }
 
 impl AudioServer {
     fn new(server_event_sender: AudioEventSender) -> Self {
-        let mut context = MainContext::new();
-        if !context.acquire() {
-            panic!("context.acquire() failed");
-        }
-
-        let server = Self {
-            context,
+        Self {
             server_event_sender,
-        };
-
-        server
+        }
     }
 
+    /// Run audio server code. This method will block until the server is closed.
+    ///
+    /// This function will modify glib thread default MainContext.
     fn run(&mut self) {
-        let (sender, receiver) = MainContext::channel::<AudioServerEvent>(glib::PRIORITY_DEFAULT);
+
+        // Create context for this thread
+        let mut context = MainContext::new();
+        context.push_thread_default();
+
+        let (sender, receiver) = MainContext::channel::<AudioServerEvent>(gtk::glib::PRIORITY_DEFAULT);
         let sender = AudioServerEventSender::new(sender);
 
         // Send init event.
@@ -384,13 +387,13 @@ impl AudioServer {
         self.server_event_sender.send(init_event);
 
         // Init PulseAudio context.
-        let mut pa_state = PAState::new(&mut self.context, sender);
+        let mut pa_state = PAState::new(&mut context, sender);
 
         // Init glib mainloop.
-        let glib_main_loop = MainLoop::new(Some(&self.context), false);
+        let glib_main_loop = MainLoop::new(Some(&context), false);
 
         let glib_main_loop_clone = glib_main_loop.clone();
-        receiver.attach(Some(&self.context), move |event| {
+        receiver.attach(Some(&context), move |event| {
             match event {
                 AudioServerEvent::RequestQuit => {
                     pa_state.request_quit();
@@ -404,11 +407,11 @@ impl AudioServer {
                 }
                 AudioServerEvent::PAQuitReady => {
                     glib_main_loop_clone.quit();
-                    return glib::Continue(false);
+                    return gtk::glib::Continue(false);
                 }
             }
 
-            glib::Continue(true)
+            gtk::glib::Continue(true)
         });
 
         glib_main_loop.run();

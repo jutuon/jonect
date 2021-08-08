@@ -7,8 +7,8 @@ use super::Ui;
 use crate::logic::{Event, Logic};
 use crate::{config::Config, settings::SettingsManager};
 
-use gio::{prelude::*, ApplicationFlags};
-use glib::{MainContext, Sender};
+use gtk::gio::{prelude::*, ApplicationFlags};
+use gtk::glib::{MainContext, Sender};
 use gtk::{prelude::*, ApplicationWindow, Label};
 
 //use futures::channel::mpsc::{self, Sender};
@@ -21,12 +21,25 @@ pub struct GtkUi;
 
 impl Ui for GtkUi {
     fn run(config: Config, settings: SettingsManager) {
-        glib::set_program_name("Multidevice".into());
-        glib::set_application_name("Multidevice");
+        gtk::glib::set_program_name("Multidevice".into());
+        gtk::glib::set_application_name("Multidevice");
+
+        // Override global default MainContext by explicitly
+        // creating a new context. Without this receiver.attach() in this
+        // function will panic because of the AudioServer's MainContext
+        // modifications.
+        //
+        // As AudioServer runs in a different thread than
+        // UI this should not be required if I understand the documentation
+        // correctly. However for some reason to avoid the panic creating
+        // a new MainContext is required here. If you know why this is required
+        // please tell me. :)
+        let context = MainContext::new();
+        context.push_thread_default();
 
         gtk::init().expect("GTK initialization failed.");
 
-        let (sender, receiver) = MainContext::channel::<UiEvent>(glib::PRIORITY_DEFAULT);
+        let (sender, receiver) = MainContext::channel::<UiEvent>(gtk::glib::PRIORITY_DEFAULT);
 
         let logic = Logic::new(config, settings, LogicEventSender::new(sender.clone()));
         let mut app = App::new(sender, logic);
@@ -39,11 +52,11 @@ impl Ui for GtkUi {
                 UiEvent::Quit => {
                     app.quit();
                     gtk::main_quit();
-                    return glib::Continue(false);
+                    return gtk::glib::Continue(false);
                 }
             }
 
-            glib::Continue(true)
+            gtk::glib::Continue(true)
         });
 
         gtk::main();

@@ -1,7 +1,7 @@
 use crate::logic::{Event, Logic};
 
-use gio::{prelude::*, ApplicationFlags};
-use glib::{MainContext, Sender};
+use gtk::gio::{prelude::*, ApplicationFlags};
+use gtk::glib::{MainContext, Sender};
 use gtk::{prelude::*, Application, ApplicationWindow, Button, Label, Window};
 
 use super::SEND_ERROR;

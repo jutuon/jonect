@@ -17,23 +17,13 @@ tokio-stream = "0.1.6"
 async-stream = "0.3.2"
 
 [dependencies.pulse]
-version = "2.23.1"
+version = "2.24"
 package = "libpulse-binding"
 
 [dependencies.pulse_glib]
-version = "2.23.0"
+version = "2.24"
 package = "libpulse-glib-binding"
 
 [dependencies.gtk]
-version = "0.9.0"
-features = ["v3_16"]
-
-[dependencies.gio]
-# Empty version will propably download version which will work
-# with gtk.
-version = ""
-features = ["v2_44"]
-
-[dependencies.glib]
-version = ""
-features = ["v2_44"]
+version = "0.14.0"
+features = ["v3_20"]
