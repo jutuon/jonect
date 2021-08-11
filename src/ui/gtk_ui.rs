@@ -7,9 +7,9 @@ use super::Ui;
 use crate::logic::{Event, Logic};
 use crate::{config::Config, settings::SettingsManager};
 
-use gtk::gio::{prelude::*, ApplicationFlags};
-use gtk::glib::{MainContext, Sender};
-use gtk::{prelude::*, ApplicationWindow, Label};
+use gtk::gio::{prelude::*};
+use gtk::glib::{MainContext, MainLoop, Sender};
+use gtk::{prelude::*, Label};
 
 //use futures::channel::mpsc::{self, Sender};
 
@@ -41,10 +41,12 @@ impl Ui for GtkUi {
 
         let (sender, receiver) = MainContext::channel::<UiEvent>(gtk::glib::PRIORITY_DEFAULT);
 
-        let logic = Logic::new(config, settings, LogicEventSender::new(sender.clone()));
+        let logic = Logic::new(config, settings, FromServerToUiSender::new(sender.clone()));
         let mut app = App::new(sender, logic);
 
         receiver.attach(None, move |event| {
+            // TODO: Fix event handling. Gtk uses different main context than
+            // the receiver.
             match event {
                 UiEvent::ButtonClicked(id) => app.handle_button(id),
                 UiEvent::CloseMainWindow => app.handle_close_main_window(),
@@ -63,11 +65,11 @@ impl Ui for GtkUi {
     }
 }
 
-pub struct LogicEventSender {
+pub struct FromServerToUiSender {
     sender: Sender<UiEvent>,
 }
 
-impl LogicEventSender {
+impl FromServerToUiSender {
     pub fn new(sender: Sender<UiEvent>) -> Self {
         Self { sender }
     }

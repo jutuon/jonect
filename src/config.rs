@@ -1,4 +1,4 @@
-use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use clap::{App, Arg, SubCommand};
 

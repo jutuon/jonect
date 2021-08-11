@@ -5,7 +5,7 @@ mod ui;
 
 use std::process;
 
-use crate::{logic::{Logic, client::TestClient}, ui::{gtk_ui::GtkUi, Ui}};
+use crate::{logic::{client::TestClient}, ui::{gtk_ui::GtkUi, Ui}};
 
 fn main() {
     let config = config::parse_cmd_args();

@@ -1,11 +1,12 @@
 use crate::logic::{Event, Logic};
 
-use gtk::gio::{prelude::*, ApplicationFlags};
-use gtk::glib::{MainContext, Sender};
-use gtk::{prelude::*, Application, ApplicationWindow, Button, Label, Window};
+use gtk::gio::{prelude::*};
+use gtk::glib::{Sender};
+use gtk::{prelude::*, Button, Label, Window};
 
 use super::SEND_ERROR;
 
+#[derive(Debug)]
 pub enum UiEvent {
     ButtonClicked(&'static str),
     LogicEvent(Event),

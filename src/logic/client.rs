@@ -4,7 +4,7 @@ use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream, runtime::Runtime}
 
 use crate::{config::TestClientConfig, logic::server::device::protocol::ServerMessage};
 
-use super::server::device::{DeviceConnection, protocol::{ClientInfo, ClientMessage, ProtocolDeserializer, ServerInfo}};
+use super::server::device::{protocol::{ClientInfo, ClientMessage, ProtocolDeserializer}};
 
 use std::convert::TryInto;
 

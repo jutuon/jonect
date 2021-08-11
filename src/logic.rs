@@ -3,13 +3,12 @@ mod server;
 pub mod client;
 
 use std::{
-    sync::mpsc::{self, Sender},
-    thread::{JoinHandle, Thread},
+    thread::{JoinHandle},
 };
 
-use crate::{config::Config, settings::SettingsManager, ui::gtk_ui::LogicEventSender};
+use crate::{config::Config, settings::SettingsManager, ui::gtk_ui::FromServerToUiSender};
 
-use self::server::{Server, ServerEvent, ServerEventSender};
+use self::server::{Server, FromUiToServerEvent, ServerEventSender};
 
 #[derive(Debug)]
 pub enum Event {
@@ -28,7 +27,7 @@ pub struct Logic {
 }
 
 impl Logic {
-    pub fn new(config: Config, settings: SettingsManager, sender: LogicEventSender) -> Self {
+    pub fn new(config: Config, settings: SettingsManager, sender: FromServerToUiSender) -> Self {
         let (server_event_sender, receiver) = Server::create_server_event_channel();
 
         let s = server_event_sender.clone();
@@ -47,12 +46,12 @@ impl Logic {
 
     pub fn send_message(&mut self) {
         self.server_event_sender
-            .send(ServerEvent::SendMessage);
+            .blocking_send(FromUiToServerEvent::SendMessage);
     }
 
     pub fn request_quit(&mut self) {
         self.server_event_sender
-            .send(ServerEvent::RequestQuit);
+            .blocking_send(FromUiToServerEvent::RequestQuit);
     }
 
     pub fn join_logic_thread(&mut self) {

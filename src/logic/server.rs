@@ -1,275 +1,73 @@
 pub mod device;
 
-use std::{sync::Arc, thread, time::Duration};
-
-use self::device::{DeviceManager, DeviceManagerError, DeviceManagerEvent, DeviceManagerEventSender, DmTcpSupportDisabled};
+use self::device::{DeviceManager, FromDeviceManagerToServerEvent, DeviceManagerEvent};
 
 use super::{
-    audio::{AudioServerEventSender, AudioThread},
+    audio::{AudioThread, FromAudioServerToServerEvent, AudioServerEvent, EventToAudioServerSender},
     Event,
 };
 
-use crate::{
-    config::Config,
-    logic::audio::AudioServerEvent,
-    ui::gtk_ui::{LogicEventSender, SEND_ERROR},
-};
+use crate::{config::Config, logic::server::device::{DeviceManagerEventSender, DeviceManagerTask}, ui::gtk_ui::{FromServerToUiSender}};
 
-use tokio::{sync::{Notify, mpsc::{self, UnboundedReceiver}}, task::JoinHandle};
+use tokio::{sync::{mpsc}};
 
 use tokio::runtime::Runtime;
 
-use tokio_stream::{
-    StreamExt,
-    wrappers::UnboundedReceiverStream,
-};
 
+
+pub const EVENT_CHANNEL_SIZE: usize = 32;
 
 #[derive(Debug)]
-pub enum ServerEvent {
+pub enum FromUiToServerEvent {
     RequestQuit,
     SendMessage,
-    QuitProgressCheck,
-    AudioServerStateChange,
-    DMStateChange,
-    DMEvent(DMEvent),
-    AudioEvent(AudioEvent),
+    //QuitProgressCheck,
+    //AudioServerStateChange,
+    //DMStateChange,
 }
 
-#[derive(Debug)]
-pub enum AudioEvent {
-    AudioServerInit(AudioServerEventSender),
-    AudioServerClosed,
-}
 
-#[derive(Debug)]
-pub enum DMEvent {
-    /// Device manager will be closed after this event.
-    DeviceManagerError(DeviceManagerError),
-    TcpSupportDisabledBecauseOfError(DmTcpSupportDisabled),
-    DMClosed,
-}
 
 #[derive(Debug, Clone)]
 pub struct ServerEventSender {
-    sender: mpsc::UnboundedSender<ServerEvent>,
+    sender: mpsc::Sender<FromUiToServerEvent>,
 }
 
 impl ServerEventSender {
-    pub fn new(sender: mpsc::UnboundedSender<ServerEvent>) -> Self {
+    pub fn new(sender: mpsc::Sender<FromUiToServerEvent>) -> Self {
         Self {
             sender,
         }
     }
 
-    pub fn send(&mut self, event: ServerEvent) {
-        self.sender.send(event).unwrap();
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct AudioEventSender {
-    sender: mpsc::UnboundedSender<ServerEvent>,
-}
-
-impl AudioEventSender {
-    pub fn new(sender: mpsc::UnboundedSender<ServerEvent>) -> Self {
-        Self {
-            sender,
-        }
-    }
-
-    pub fn send(&mut self, event: AudioEvent) {
-        self.sender.send(ServerEvent::AudioEvent(event)).unwrap();
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DMEventSender {
-    sender: mpsc::UnboundedSender<ServerEvent>,
-}
-
-impl DMEventSender {
-    pub fn new(sender: mpsc::UnboundedSender<ServerEvent>) -> Self {
-        Self {
-            sender,
-        }
-    }
-
-    pub fn send(&mut self, event: DMEvent) {
-        self.sender.send(ServerEvent::DMEvent(event)).unwrap();
+    pub fn blocking_send(&mut self, event: FromUiToServerEvent) {
+        self.sender.blocking_send(event).unwrap();
     }
 }
 
 
-pub struct ServerStatus {
-    audio_server_is_running: bool,
-    device_manager_is_running: bool,
-}
 
-impl ServerStatus {
-    /// Creates new ServerStatus with status running.
-    pub fn new() -> Self {
-        Self {
-            audio_server_is_running: true,
-            device_manager_is_running: true
-        }
-    }
 
-    pub fn set_audio_server_status_to_closed(&mut self) {
-        self.audio_server_is_running = false;
-    }
+// #[derive(Debug, Clone)]
+// pub struct DMEventSender {
+//     sender: mpsc::UnboundedSender<ServerEvent>,
+// }
 
-    pub fn set_device_manager_status_to_closed(&mut self) {
-        self.device_manager_is_running = false;
-    }
+// impl DMEventSender {
+//     pub fn new(sender: mpsc::UnboundedSender<ServerEvent>) -> Self {
+//         Self {
+//             sender,
+//         }
+//     }
 
-    pub fn all_server_components_are_closed(&self) -> bool {
-        !self.audio_server_is_running && !self.device_manager_is_running
-    }
-}
+//     pub fn send(&mut self, event: DMEvent) {
+//         self.sender.send(ServerEvent::DMEvent(event)).unwrap();
+//     }
+// }
 
-/// Close component message.
-enum CloseComponent {
-    Yes,
-    No,
-}
 
-struct AudioServerStateWaitingEventSender {
-    thread: AudioThread,
-}
+/*
 
-impl AudioServerStateWaitingEventSender {
-    fn new(thread: AudioThread) -> Self {
-        Self {
-            thread,
-        }
-    }
-
-    fn handle_event(self, event: AudioEvent) -> AudioServerStateRunning {
-        if let AudioEvent::AudioServerInit(sender) = event {
-            AudioServerStateRunning { sender, thread: self.thread }
-        } else {
-            panic!("Error: First event from AudioServer must be AudioServerInit.");
-        }
-    }
-}
-
-enum ComponentEventHandlingResult<C, E> {
-    Running(C),
-    NormalQuit,
-    FatalError(E),
-}
-
-struct AudioServerStateRunning {
-    sender: AudioServerEventSender,
-    thread: AudioThread,
-}
-
-impl AudioServerStateRunning {
-    fn handle_event(mut self, event: AudioEvent) -> ComponentEventHandlingResult<AudioServerStateRunning, ()> {
-        match event {
-            AudioEvent::AudioServerInit(_) => {
-                panic!("Error: multiple AudioServerInit events detected");
-            }
-            AudioEvent::AudioServerClosed => {
-                self.thread.join();
-                ComponentEventHandlingResult::NormalQuit
-            }
-        }
-    }
-
-    fn send_event(&mut self, event: AudioServerEvent) {
-        self.sender.send(event);
-    }
-}
-
-enum AudioServerState {
-    WaitingEventSender {
-        server_state: AudioServerStateWaitingEventSender,
-        quit_requested: bool,
-    },
-    Running(AudioServerStateRunning),
-    Closed,
-}
-
-impl AudioServerState {
-    fn new(server_state: AudioServerStateWaitingEventSender) -> Self {
-        Self::WaitingEventSender { server_state, quit_requested: false }
-    }
-
-    fn handle_event(mut self, audio_event: AudioEvent, server_sender: &mut ServerEventSender) -> Self {
-        match self {
-            Self::WaitingEventSender {
-                server_state,
-                quit_requested,
-            } => {
-                let mut new_state = server_state.handle_event(audio_event);
-                if quit_requested {
-                    new_state.send_event(AudioServerEvent::RequestQuit);
-                }
-                self = AudioServerState::Running(new_state);
-                server_sender.send(ServerEvent::AudioServerStateChange);
-            }
-            Self::Running(server_state) => {
-                match server_state.handle_event(audio_event) {
-                    ComponentEventHandlingResult::Running(server_state) => {
-                        self = AudioServerState::Running(server_state);
-                    }
-                    ComponentEventHandlingResult::FatalError(e) => {
-                        eprintln!("Audio server fatal error: {:?}", e);
-                        self = AudioServerState::Closed;
-                        server_sender.send(ServerEvent::AudioServerStateChange);
-
-                    }
-                    ComponentEventHandlingResult::NormalQuit => {
-                        self = AudioServerState::Closed;
-                        server_sender.send(ServerEvent::AudioServerStateChange);
-                    }
-                }
-            }
-            Self::Closed => {
-                panic!("Error: Audio event received even if audio server is closed.");
-            }
-        }
-
-        self
-    }
-
-    fn running(&self) -> bool {
-        if let Self::Running(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn closed(&self) -> bool {
-        if let Self::Closed = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn send_event_if_running(&mut self, event: AudioServerEvent) {
-        if let Self::Running(state) = self {
-            state.send_event(event);
-        }
-    }
-
-    fn request_quit(&mut self) {
-        match self {
-            Self::WaitingEventSender { quit_requested, ..} => {
-                *quit_requested = true;
-            }
-            Self::Running(server_state) => {
-                server_state.send_event(AudioServerEvent::RequestQuit);
-            }
-            Self::Closed => (),
-        }
-    }
-}
 
 
 enum DMState {
@@ -287,24 +85,24 @@ impl DMState {
 
     async fn handle_dm_event(
         &mut self,
-        e: DMEvent,
+        e: EventFromDeviceManager,
         server_sender: &mut ServerEventSender,
     ) {
         match self {
             Self::Running { handle, .. } => {
                 match e {
-                    DMEvent::DeviceManagerError(e) => {
+                    EventFromDeviceManager::DeviceManagerError(e) => {
                         eprintln!("DeviceManagerError {:?}", e);
                         *self = Self::Closed;
-                        server_sender.send(ServerEvent::DMStateChange);
+                        server_sender.send(FromUiToServerEvent::DMStateChange);
                     }
-                    DMEvent::TcpSupportDisabledBecauseOfError(e) => {
+                    EventFromDeviceManager::TcpSupportDisabledBecauseOfError(e) => {
                         eprintln!("TcpSupportDisabledBecauseOfError {:?}", e);
                     }
-                    DMEvent::DMClosed => {
+                    EventFromDeviceManager::DMClosed => {
                         handle.await.unwrap();
                         *self = Self::Closed;
-                        server_sender.send(ServerEvent::DMStateChange);
+                        server_sender.send(FromUiToServerEvent::DMStateChange);
                     }
                 }
             }
@@ -331,38 +129,103 @@ impl DMState {
     }
 }
 
+*/
+
+/// Drop this type after component is closed.
+pub type ShutdownWatch = mpsc::Sender<()>;
+
 pub struct AsyncServer {
-    sender: LogicEventSender,
-    receiver: UnboundedReceiverStream<ServerEvent>,
-    server_event_sender: ServerEventSender,
+    sender: FromServerToUiSender,
+    ui_event_receiver: mpsc::Receiver<FromUiToServerEvent>,
     config: Config,
 }
 
 impl AsyncServer {
     pub fn new(
-        sender: LogicEventSender,
-        receiver: UnboundedReceiverStream<ServerEvent>,
-        server_event_sender: ServerEventSender,
+        sender: FromServerToUiSender,
+        ui_event_receiver: mpsc::Receiver<FromUiToServerEvent>,
         config: Config,
     ) -> Self {
         Self {
             sender,
-            receiver,
-            server_event_sender,
+            ui_event_receiver,
             config,
         }
     }
 
     pub async fn run(&mut self) {
-        let a_event_sender = Server::create_audio_event_channel(self.server_event_sender.clone());
 
-        let audio_thread = AudioThread::run(a_event_sender);
-        let state = AudioServerStateWaitingEventSender::new(audio_thread);
-        let mut audio_server_state = AudioServerState::new(state);
+        let (shutdown_watch, mut shutdown_watch_receiver) = mpsc::channel(1);
 
-        let (dm_sender, dm_receiver) = DeviceManager::create_device_event_channel();
-        let dm_server_sender = Server::create_dm_event_channel(self.server_event_sender.clone());
-        let dm = DeviceManager::new(dm_server_sender, dm_receiver, dm_sender.clone());
+        let (mut at, mut at_sender) = AudioThread::start(shutdown_watch.clone()).await;
+        let (dm_task_handle, mut dm_sender, mut dm_reveiver) = DeviceManagerTask::new();
+
+        // Drop initial instance of the shutdown watch to make the receiver
+        // to notice the shutdown.
+        drop(shutdown_watch);
+
+        async fn send_shutdown_request(
+            at_sender: &mut EventToAudioServerSender,
+            dm_sender: &mut DeviceManagerEventSender,
+        ) {
+            at_sender.send(AudioServerEvent::RequestQuit);
+            dm_sender.send(DeviceManagerEvent::RequestQuit).await;
+        }
+
+
+
+        loop {
+
+            tokio::select! {
+                Some(at_event) = at.next_event() => {
+                    match at_event {
+                        event @ FromAudioServerToServerEvent::Init(_) => {
+                            panic!("Event {:?} is not handled correctly!", event);
+                        }
+                    }
+                }
+                Some(dm_event) = dm_reveiver.recv() => {
+                    match dm_event {
+                        FromDeviceManagerToServerEvent::DeviceManagerError(error) => {
+                            eprintln!("Device manager error {:?}", error);
+                            send_shutdown_request(&mut at_sender, &mut dm_sender).await;
+                            break;
+                        }
+                        FromDeviceManagerToServerEvent::TcpSupportDisabledBecauseOfError(error) => {
+                            eprintln!("TCP support disabled {:?}", error);
+                        }
+                    }
+                }
+                Some(ui_event) = self.ui_event_receiver.recv() => {
+                    match ui_event {
+                        FromUiToServerEvent::RequestQuit => {
+                            send_shutdown_request(&mut at_sender, &mut dm_sender).await;
+                            break;
+                        }
+                        FromUiToServerEvent::SendMessage => {
+
+                        }
+                    }
+                }
+            }
+        }
+
+        // Quit started. Wait all components to close.
+
+        let _ = shutdown_watch_receiver.recv().await;
+        at.join();
+        dm_task_handle.await.unwrap();
+
+
+        //let state = AudioServerStateWaitingEventSender::new(audio_thread);
+        //let mut audio_server_state = AudioServerState::new(state);
+
+/*
+
+
+
+        let (dm_sender, dm_receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
+        let dm = DeviceManager::new(dm_receiver, dm_sender.clone());
         let mut dm_state = DMState::new(dm, dm_sender);
 
         let mut quit_requested = false;
@@ -374,18 +237,18 @@ impl AsyncServer {
                 .expect("Logic bug: self.receiver channel closed.");
 
             match event {
-                ServerEvent::AudioEvent(e) => {
+                FromUiToServerEvent::AudioEvent(e) => {
                     audio_server_state = audio_server_state.handle_event(e, &mut self.server_event_sender);
                 }
-                ServerEvent::DMEvent(e) => {
+                FromUiToServerEvent::DMEvent(e) => {
                     dm_state.handle_dm_event(e, &mut self.server_event_sender).await;
                 }
-                ServerEvent::DMStateChange => {
+                FromUiToServerEvent::DMStateChange => {
                     if dm_state.closed() && quit_requested {
-                        self.server_event_sender.send(ServerEvent::QuitProgressCheck);
+                        self.server_event_sender.send(FromUiToServerEvent::QuitProgressCheck);
                     }
                 }
-                ServerEvent::AudioServerStateChange => {
+                FromUiToServerEvent::AudioServerStateChange => {
                     match audio_server_state {
                         AudioServerState::WaitingEventSender {..} => (),
                         AudioServerState::Running(ref mut state) => {
@@ -397,41 +260,45 @@ impl AsyncServer {
                         }
                         AudioServerState::Closed => {
                             if quit_requested {
-                                self.server_event_sender.send(ServerEvent::QuitProgressCheck);
+                                self.server_event_sender.send(FromUiToServerEvent::QuitProgressCheck);
                             }
                         }
                     }
                 }
-                ServerEvent::RequestQuit => {
+                FromUiToServerEvent::RequestQuit => {
                     quit_requested = true;
                     audio_server_state.request_quit();
                     dm_state.request_quit();
                     // Send quit progress check event to handle case when all
                     // components are already closed.
-                    self.server_event_sender.send(ServerEvent::QuitProgressCheck);
+                    self.server_event_sender.send(FromUiToServerEvent::QuitProgressCheck);
                 }
-                ServerEvent::QuitProgressCheck => {
+                FromUiToServerEvent::QuitProgressCheck => {
                     if audio_server_state.closed() && dm_state.closed() {
                         break;
                     }
                 }
-                ServerEvent::SendMessage => {
+                FromUiToServerEvent::SendMessage => {
                     self.sender.send(Event::Message("Test message".to_string()));
                 }
             }
         }
 
+        */
+
         // All server components are now closed.
         self.sender.send(Event::CloseProgram);
     }
+
+
 }
 
 pub struct Server;
 
 impl Server {
     pub fn run(
-        mut sender: LogicEventSender,
-        receiver: UnboundedReceiverStream<ServerEvent>,
+        mut sender: FromServerToUiSender,
+        receiver: mpsc::Receiver<FromUiToServerEvent>,
         server_event_sender: ServerEventSender,
         config: Config,
     ) {
@@ -446,22 +313,18 @@ impl Server {
             }
         };
 
-        let mut server = AsyncServer::new(sender, receiver, server_event_sender, config);
+        let mut server = AsyncServer::new(sender, receiver, config);
 
         rt.block_on(server.run());
     }
 
-    pub fn create_server_event_channel() -> (ServerEventSender, UnboundedReceiverStream<ServerEvent>) {
-        let (sender, receiver) = mpsc::unbounded_channel();
+    pub fn create_server_event_channel() -> (ServerEventSender, mpsc::Receiver<FromUiToServerEvent>) {
+        let (sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
-        (ServerEventSender::new(sender), UnboundedReceiverStream::new(receiver))
+        (ServerEventSender::new(sender), receiver)
     }
 
-    pub fn create_audio_event_channel(server_event_sender: ServerEventSender) -> AudioEventSender {
-        AudioEventSender::new(server_event_sender.sender)
-    }
-
-    pub fn create_dm_event_channel(server_event_sender: ServerEventSender) -> DMEventSender {
-        DMEventSender::new(server_event_sender.sender)
-    }
+    // pub fn create_dm_event_channel(server_event_sender: ServerEventSender) -> DMEventSender {
+    //     DMEventSender::new(server_event_sender.sender)
+    // }
 }
