@@ -24,17 +24,9 @@ impl Ui for GtkUi {
         gtk::glib::set_program_name("Multidevice".into());
         gtk::glib::set_application_name("Multidevice");
 
-        // Override global default MainContext by explicitly
-        // creating a new context. Without this receiver.attach() in this
-        // function will panic because of the AudioServer's MainContext
-        // modifications.
-        //
-        // As AudioServer runs in a different thread than
-        // UI this should not be required if I understand the documentation
-        // correctly. However for some reason to avoid the panic creating
-        // a new MainContext is required here. If you know why this is required
-        // please tell me. :)
-        let context = MainContext::new();
+        // Without setting the global context to thread default context
+        // the receiver.attatch() will panic.
+        let context = MainContext::default();
         context.push_thread_default();
 
         gtk::init().expect("GTK initialization failed.");
@@ -45,8 +37,6 @@ impl Ui for GtkUi {
         let mut app = App::new(sender, logic);
 
         receiver.attach(None, move |event| {
-            // TODO: Fix event handling. Gtk uses different main context than
-            // the receiver.
             match event {
                 UiEvent::ButtonClicked(id) => app.handle_button(id),
                 UiEvent::CloseMainWindow => app.handle_close_main_window(),
