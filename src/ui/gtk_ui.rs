@@ -4,7 +4,7 @@ use self::app::App;
 
 use super::Ui;
 
-use crate::logic::{Event, Logic};
+use crate::server::ui::{Event};
 use crate::{config::Config, settings::SettingsManager};
 
 use gtk::gio::{prelude::*};

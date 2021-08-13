@@ -1,6 +1,3 @@
-mod audio;
-mod server;
-pub mod client;
 
 use std::{
     thread::{JoinHandle},
@@ -10,14 +7,6 @@ use crate::{config::Config, settings::SettingsManager, ui::gtk_ui::FromServerToU
 
 use self::server::{Server, FromUiToServerEvent, ServerEventSender};
 
-#[derive(Debug)]
-pub enum Event {
-    InitStart,
-    InitError,
-    InitEnd,
-    Message(String),
-    CloseProgram,
-}
 
 pub struct Logic {
     config: Config,

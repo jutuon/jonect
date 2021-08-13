@@ -1,13 +1,15 @@
 pub mod device;
+pub mod audio;
+pub mod ui;
+pub mod utils;
 
 use self::device::{DeviceManager, FromDeviceManagerToServerEvent, DeviceManagerEvent};
 
-use super::{
+use {
     audio::{AudioThread, FromAudioServerToServerEvent, AudioServerEvent, EventToAudioServerSender},
-    Event,
 };
 
-use crate::{config::Config, logic::server::device::{DeviceManagerEventSender, DeviceManagerTask}, ui::gtk_ui::{FromServerToUiSender}};
+use crate::{config::Config, server::{device::{DeviceManagerEventSender, DeviceManagerTask}, ui::{FromUiToServerEvent, InternalFromServerToUiEvent, UiConnectionManager}}};
 
 use tokio::{sync::{mpsc}};
 
@@ -17,33 +19,26 @@ use tokio::runtime::Runtime;
 
 pub const EVENT_CHANNEL_SIZE: usize = 32;
 
-#[derive(Debug)]
-pub enum FromUiToServerEvent {
-    RequestQuit,
-    SendMessage,
-    //QuitProgressCheck,
-    //AudioServerStateChange,
-    //DMStateChange,
-}
 
 
 
-#[derive(Debug, Clone)]
-pub struct ServerEventSender {
-    sender: mpsc::Sender<FromUiToServerEvent>,
-}
 
-impl ServerEventSender {
-    pub fn new(sender: mpsc::Sender<FromUiToServerEvent>) -> Self {
-        Self {
-            sender,
-        }
-    }
+// #[derive(Debug, Clone)]
+// pub struct ServerEventSender {
+//     sender: mpsc::Sender<FromUiToServerEvent>,
+// }
 
-    pub fn blocking_send(&mut self, event: FromUiToServerEvent) {
-        self.sender.blocking_send(event).unwrap();
-    }
-}
+// impl ServerEventSender {
+//     pub fn new(sender: mpsc::Sender<FromUiToServerEvent>) -> Self {
+//         Self {
+//             sender,
+//         }
+//     }
+
+//     pub fn blocking_send(&mut self, event: FromUiToServerEvent) {
+//         self.sender.blocking_send(event).unwrap();
+//     }
+// }
 
 
 
@@ -135,20 +130,20 @@ impl DMState {
 pub type ShutdownWatch = mpsc::Sender<()>;
 
 pub struct AsyncServer {
-    sender: FromServerToUiSender,
-    ui_event_receiver: mpsc::Receiver<FromUiToServerEvent>,
+    //sender: FromServerToUiSender,
+    //ui_event_receiver: mpsc::Receiver<FromUiToServerEvent>,
     config: Config,
 }
 
 impl AsyncServer {
     pub fn new(
-        sender: FromServerToUiSender,
-        ui_event_receiver: mpsc::Receiver<FromUiToServerEvent>,
+        //sender: FromServerToUiSender,
+        //ui_event_receiver: mpsc::Receiver<FromUiToServerEvent>,
         config: Config,
     ) -> Self {
         Self {
-            sender,
-            ui_event_receiver,
+            //sender,
+            //ui_event_receiver,
             config,
         }
     }
@@ -159,6 +154,7 @@ impl AsyncServer {
 
         let (mut at, mut at_sender) = AudioThread::start(shutdown_watch.clone()).await;
         let (dm_task_handle, mut dm_sender, mut dm_reveiver) = DeviceManagerTask::new();
+        let (ui_task_handle, mut ui_sender, mut server_receiver) = UiConnectionManager::task();
 
         // Drop initial instance of the shutdown watch to make the receiver
         // to notice the shutdown.
@@ -167,9 +163,11 @@ impl AsyncServer {
         async fn send_shutdown_request(
             at_sender: &mut EventToAudioServerSender,
             dm_sender: &mut DeviceManagerEventSender,
+            ui_sender: &mut mpsc::Sender<InternalFromServerToUiEvent>,
         ) {
             at_sender.send(AudioServerEvent::RequestQuit);
             dm_sender.send(DeviceManagerEvent::RequestQuit).await;
+            ui_sender.send(InternalFromServerToUiEvent::RequestQuit);
         }
 
 
@@ -188,7 +186,7 @@ impl AsyncServer {
                     match dm_event {
                         FromDeviceManagerToServerEvent::DeviceManagerError(error) => {
                             eprintln!("Device manager error {:?}", error);
-                            send_shutdown_request(&mut at_sender, &mut dm_sender).await;
+                            send_shutdown_request(&mut at_sender, &mut dm_sender, &mut ui_sender).await;
                             break;
                         }
                         FromDeviceManagerToServerEvent::TcpSupportDisabledBecauseOfError(error) => {
@@ -196,17 +194,20 @@ impl AsyncServer {
                         }
                     }
                 }
-                Some(ui_event) = self.ui_event_receiver.recv() => {
+
+                Some(ui_event) = server_receiver.recv() => {
                     match ui_event {
-                        FromUiToServerEvent::RequestQuit => {
-                            send_shutdown_request(&mut at_sender, &mut dm_sender).await;
-                            break;
+                        FromUiToServerEvent::DisconnectRequest |
+                        FromUiToServerEvent::DisconnectRequestResponse  => {
+                            // The task handles these events.
                         }
-                        FromUiToServerEvent::SendMessage => {
+                        FromUiToServerEvent::NotificationTest => {
 
                         }
                     }
                 }
+
+
             }
         }
 
@@ -215,6 +216,7 @@ impl AsyncServer {
         let _ = shutdown_watch_receiver.recv().await;
         at.join();
         dm_task_handle.await.unwrap();
+        ui_task_handle.await.unwrap();
 
 
         //let state = AudioServerStateWaitingEventSender::new(audio_thread);
@@ -285,9 +287,6 @@ impl AsyncServer {
         }
 
         */
-
-        // All server components are now closed.
-        self.sender.send(Event::CloseProgram);
     }
 
 
@@ -297,32 +296,32 @@ pub struct Server;
 
 impl Server {
     pub fn run(
-        mut sender: FromServerToUiSender,
-        receiver: mpsc::Receiver<FromUiToServerEvent>,
-        server_event_sender: ServerEventSender,
+        // mut sender: FromServerToUiSender,
+        // receiver: mpsc::Receiver<FromUiToServerEvent>,
+        // server_event_sender: ServerEventSender,
         config: Config,
     ) {
-        sender.send(Event::InitStart);
+        // sender.send(Event::InitStart);
 
         let rt = match Runtime::new() {
             Ok(rt) => rt,
             Err(e) => {
-                sender.send(Event::InitError);
+                //sender.send(Event::InitError);
                 eprintln!("{}", e);
                 return;
             }
         };
 
-        let mut server = AsyncServer::new(sender, receiver, config);
+        let mut server = AsyncServer::new(config);
 
         rt.block_on(server.run());
     }
 
-    pub fn create_server_event_channel() -> (ServerEventSender, mpsc::Receiver<FromUiToServerEvent>) {
-        let (sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
+    // pub fn create_server_event_channel() -> (ServerEventSender, mpsc::Receiver<FromUiToServerEvent>) {
+    //     let (sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
-        (ServerEventSender::new(sender), receiver)
-    }
+    //     (ServerEventSender::new(sender), receiver)
+    // }
 
     // pub fn create_dm_event_channel(server_event_sender: ServerEventSender) -> DMEventSender {
     //     DMEventSender::new(server_event_sender.sender)

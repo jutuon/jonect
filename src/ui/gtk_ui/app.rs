@@ -1,4 +1,4 @@
-use crate::logic::{Event, Logic};
+use crate::server::ui::{Event};
 
 use gtk::gio::{prelude::*};
 use gtk::glib::{Sender};

@@ -2,9 +2,9 @@
 
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream, runtime::Runtime};
 
-use crate::{config::TestClientConfig, logic::server::device::protocol::ServerMessage};
+use crate::{config::TestClientConfig, server::device::protocol::ServerMessage};
 
-use super::server::device::{protocol::{ClientInfo, ClientMessage, ProtocolDeserializer}};
+use crate::server::device::{protocol::{ClientInfo, ClientMessage, ProtocolDeserializer}};
 
 use std::convert::TryInto;
 
