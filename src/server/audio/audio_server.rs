@@ -345,7 +345,7 @@ impl AudioServer {
 
         // Send init event.
         let init_event = FromAudioServerToServerEvent::Init(sender.clone());
-        self.server_event_sender.blocking_send(init_event);
+        self.server_event_sender.blocking_send(init_event).unwrap();
 
         // Init PulseAudio context.
         let mut pa_state = PAState::new(&mut context, sender);

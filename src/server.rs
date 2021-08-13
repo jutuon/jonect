@@ -3,15 +3,19 @@ pub mod audio;
 pub mod ui;
 pub mod utils;
 
-use self::device::{DeviceManager, FromDeviceManagerToServerEvent, DeviceManagerEvent};
+use self::device::{FromDeviceManagerToServerEvent, DeviceManagerEvent};
 
 use {
     audio::{AudioThread, FromAudioServerToServerEvent, AudioServerEvent, EventToAudioServerSender},
 };
 
-use crate::{config::Config, server::{device::{DeviceManagerEventSender, DeviceManagerTask}, ui::{FromUiToServerEvent, InternalFromServerToUiEvent, UiConnectionManager}}};
+use crate::{
+    config::Config,
+    server::{device::{DeviceManagerEventSender, DeviceManagerTask},
+    ui::{UiProtocolServerMessage, ConnectionManagerMessage, UiConnectionManager}}
+};
 
-use tokio::{sync::{mpsc}};
+use tokio::{sync::{mpsc}, signal};
 
 use tokio::runtime::Runtime;
 
@@ -153,8 +157,8 @@ impl AsyncServer {
         let (shutdown_watch, mut shutdown_watch_receiver) = mpsc::channel(1);
 
         let (mut at, mut at_sender) = AudioThread::start(shutdown_watch.clone()).await;
-        let (dm_task_handle, mut dm_sender, mut dm_reveiver) = DeviceManagerTask::new();
-        let (ui_task_handle, mut ui_sender, mut server_receiver) = UiConnectionManager::task();
+        let (dm_task_handle, mut dm_sender, mut dm_reveiver) = DeviceManagerTask::task(shutdown_watch.clone());
+        let (ui_task_handle, mut ui_sender, mut server_receiver) = UiConnectionManager::task(shutdown_watch.clone());
 
         // Drop initial instance of the shutdown watch to make the receiver
         // to notice the shutdown.
@@ -163,14 +167,14 @@ impl AsyncServer {
         async fn send_shutdown_request(
             at_sender: &mut EventToAudioServerSender,
             dm_sender: &mut DeviceManagerEventSender,
-            ui_sender: &mut mpsc::Sender<InternalFromServerToUiEvent>,
+            ui_sender: &mut mpsc::Sender<ConnectionManagerMessage>,
         ) {
             at_sender.send(AudioServerEvent::RequestQuit);
             dm_sender.send(DeviceManagerEvent::RequestQuit).await;
-            ui_sender.send(InternalFromServerToUiEvent::RequestQuit);
+            ui_sender.send(ConnectionManagerMessage::RequestQuit).await.unwrap();
         }
 
-
+        let mut ctrl_c_listener_enabled = true;
 
         loop {
 
@@ -194,20 +198,26 @@ impl AsyncServer {
                         }
                     }
                 }
-
                 Some(ui_event) = server_receiver.recv() => {
                     match ui_event {
-                        FromUiToServerEvent::DisconnectRequest |
-                        FromUiToServerEvent::DisconnectRequestResponse  => {
-                            // The task handles these events.
-                        }
-                        FromUiToServerEvent::NotificationTest => {
-
+                        UiProtocolServerMessage::NotificationTest => {
+                            println!("UI notification");
                         }
                     }
                 }
+                quit_request = signal::ctrl_c(), if ctrl_c_listener_enabled => {
+                    match quit_request {
+                        Ok(()) => {
+                            send_shutdown_request(&mut at_sender, &mut dm_sender, &mut ui_sender).await;
+                            break;
+                        }
+                        Err(e) => {
+                            ctrl_c_listener_enabled = false;
+                            eprintln!("Failed to listen CTRL+C. Error: {}", e);
+                        }
+                    }
 
-
+                }
             }
         }
 

@@ -3,11 +3,11 @@ pub mod protocol;
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf}}, sync::{mpsc}, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
-use std::{collections::HashMap, convert::TryInto, future::Future, io, num::TryFromIntError};
+use std::{collections::HashMap, convert::TryInto, io, num::TryFromIntError};
 
 use self::protocol::{ClientInfo, ClientMessage, ProtocolDeserializer, ProtocolDeserializerError, ServerInfo, ServerMessage};
 
-use super::{EVENT_CHANNEL_SIZE};
+use super::{EVENT_CHANNEL_SIZE, ShutdownWatch};
 
 #[derive(Debug)]
 pub enum FromDeviceManagerToServerEvent {
@@ -189,14 +189,14 @@ impl DeviceManagerAsync {
         mut dm_event_sender: DeviceManagerEventSender,
     ) {
         tokio::select! {
-            _ = cancellation_token.cancelled() => return,
+            _ = cancellation_token.cancelled() => (),
             bind_result = TcpListener::bind("127.0.0.1:8080") => {
                 match bind_result {
                     Ok(listener) => {
-                        dm_event_sender.send_create_tcp_listener_event(CreateTcpListenerEvent::ListenerCreated(listener));
+                        dm_event_sender.send_create_tcp_listener_event(CreateTcpListenerEvent::ListenerCreated(listener)).await;
                     }
                     Err(e) => {
-                        dm_event_sender.send_create_tcp_listener_event(CreateTcpListenerEvent::ListenerCreationError(e));
+                        dm_event_sender.send_create_tcp_listener_event(CreateTcpListenerEvent::ListenerCreationError(e)).await;
                     }
                 }
             }
@@ -215,7 +215,7 @@ impl DeviceManagerAsync {
                     match listener_result {
                         Ok((socket, _)) => socket,
                         Err(e) => {
-                            dm_event_sender.send_accept_device_event(AcceptDeviceEvent::SocketListenerAcceptError(e));
+                            dm_event_sender.send_accept_device_event(AcceptDeviceEvent::SocketListenerAcceptError(e)).await;
                             return;
                         }
                     }
@@ -227,10 +227,10 @@ impl DeviceManagerAsync {
                 device_result = Device::new(DeviceConnection::new(socket)) => {
                     match device_result {
                         Ok(device) => {
-                            dm_event_sender.send_accept_device_event(AcceptDeviceEvent::NewDevice(device));
+                            dm_event_sender.send_accept_device_event(AcceptDeviceEvent::NewDevice(device)).await;
                         }
                         Err(e) => {
-                            dm_event_sender.send_accept_device_event(AcceptDeviceEvent::DeviceConnectionInitError(e));
+                            dm_event_sender.send_accept_device_event(AcceptDeviceEvent::DeviceConnectionInitError(e)).await;
                         }
                     }
                 }
@@ -275,7 +275,7 @@ impl DmTcpStateManager {
                         handle.await.unwrap();
                         let e = DmTcpSupportDisabled::ListenerCreationError(e);
                         let e = FromDeviceManagerToServerEvent::TcpSupportDisabledBecauseOfError(e);
-                        self.dm_event_sender.send(DeviceManagerEvent::RedirectToServer(e));
+                        self.dm_event_sender.send(DeviceManagerEvent::RedirectToServer(e)).await;
                         self.state = DmTcpState::Closed;
                     }
                     CreateTcpListenerEvent::ListenerCreated(listener) => {
@@ -345,12 +345,14 @@ pub struct DeviceManager {
     dm_tcp_state: DmTcpState,
     ct: CancellationToken,
     dm_tcp_state_manager: DmTcpStateManager,
+    _shutdown_watch: ShutdownWatch,
 }
 
 
 impl DeviceManager {
     pub fn new(
         server_sender: mpsc::Sender<FromDeviceManagerToServerEvent>,
+        shutdown_watch: ShutdownWatch,
     ) -> (Self, DeviceManagerEventSender) {
         let (dm_event_sender, receiver) = DeviceManager::create_device_event_channel();
         let ct = CancellationToken::new();
@@ -364,6 +366,7 @@ impl DeviceManager {
             dm_tcp_state: DmTcpState::Closed,
             ct,
             dm_tcp_state_manager,
+            _shutdown_watch: shutdown_watch,
         };
 
         (dm, dm_event_sender)
@@ -415,16 +418,16 @@ pub struct DeviceManagerTask;
 
 
 impl DeviceManagerTask {
-    pub fn new() -> (
+    pub fn task(shutdown_watch: ShutdownWatch) -> (
         JoinHandle<()>,
         DeviceManagerEventSender,
         mpsc::Receiver<FromDeviceManagerToServerEvent>) {
         let (sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
-        let (mut dm, dm_sender) = DeviceManager::new(sender);
+        let (mut dm, dm_sender) = DeviceManager::new(sender, shutdown_watch);
 
         let task = async move {
-            dm.run();
+            dm.run().await;
         };
 
         let handle = tokio::spawn(task);

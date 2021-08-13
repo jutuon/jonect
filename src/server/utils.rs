@@ -33,8 +33,8 @@ impl JsonMessageConnectionReader {
     }
 
 
-    pub fn message_len(&self) -> Option<u32> {
-        let (len, _) = self.buffer.split_at(4);
+    pub fn message_len(buffer: &BytesMut) -> Option<u32> {
+        let (len, _) = buffer.split_at(4);
 
         let len: [u8; 4] = match len.try_into() {
             Ok(len) => len,
@@ -45,12 +45,12 @@ impl JsonMessageConnectionReader {
         Some(len)
     }
 
-    pub fn buffer_contains_a_message(&self) -> bool {
-        if let Some(len) = self.message_len() {
+    pub fn buffer_contains_a_message(buffer: &BytesMut) -> bool {
+        if let Some(len) = Self::message_len(buffer) {
             // TODO: Handle integer overflow.
-            let required_buffer_len = usize::checked_add(len as usize, self.buffer.len()).unwrap();
+            let required_buffer_len = usize::checked_add(len as usize, buffer.len()).unwrap();
 
-            self.buffer.len() >= required_buffer_len
+            buffer.len() >= required_buffer_len
         } else {
             false
         }
@@ -59,14 +59,14 @@ impl JsonMessageConnectionReader {
     /// If Some() is returned then parsed message is removed from the buffer.
     ///
     /// Panics if there is not enough data in the buffer.
-    pub fn parse_message<D: DeserializeOwned>(&mut self) -> Result<D, ReadError> {
-        let len = self.message_len().unwrap();
-        let message_bytes = self.buffer.split_to(len as usize);
+    pub fn parse_message<D: DeserializeOwned>(buffer: &mut BytesMut) -> Result<D, ReadError> {
+        let len = Self::message_len(buffer).unwrap();
+        let message_bytes = buffer.split_to(len as usize);
         let parse_result = serde_json::from_slice(&message_bytes).map_err(ReadError::Deserialize);
         parse_result
     }
 
-    pub async fn read<D: DeserializeOwned>(&mut self, read_half: &mut ReadHalf<'_>) -> Result<D, ReadError> {
+    pub async fn read<D: DeserializeOwned>(mut buffer: BytesMut, mut read_half: ReadHalf<'_>) -> (Result<D, ReadError>, BytesMut, ReadHalf<'_>) {
 
 
         // self.buffer.clear();
@@ -77,20 +77,24 @@ impl JsonMessageConnectionReader {
         // let mut read_half_with_limit = read_half.take(message_len as u64);
 
         loop {
-            if self.buffer_contains_a_message() {
+            if Self::buffer_contains_a_message(&buffer) {
                 break;
             }
 
-            if 0 == read_half.read_buf(&mut self.buffer).await.map_err(ReadError::Io)? {
-                return Err(ReadError::UnexpectedEnding);
+            match read_half.read_buf(&mut buffer).await.map_err(ReadError::Io) {
+                Ok(0) => {
+                    return (Err(ReadError::UnexpectedEnding), buffer, read_half);
+                }
+                Ok(_) => (),
+                Err(e) => return (Err(e), buffer, read_half),
             }
         }
 
-        self.parse_message()
+        (Self::parse_message(&mut buffer), buffer, read_half)
     }
 
 
-
+/*
     pub async fn read_stream<'a, D: DeserializeOwned + 'a >(mut self, mut read_half: ReadHalf<'a>) -> impl Stream<Item=Result<D, ReadError>> + 'a {
         stream! {
             loop {
@@ -98,7 +102,7 @@ impl JsonMessageConnectionReader {
             }
         }
     }
-
+ */
 }
 
 pub struct JsonMessageConnectionWriter;
