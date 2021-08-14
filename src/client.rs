@@ -52,15 +52,14 @@ impl AsyncClient {
             .len()
             .try_into()
             .unwrap();
-        let data_len = data_len as u32;
 
         stream.write_all(&data_len.to_be_bytes()).await.unwrap();
         stream.write_all(&data).await.unwrap();
 
         loop {
-            let message_len = stream.read_u32().await.unwrap();
-            if message_len > i32::max_value() as u32 {
-                panic!("message_len > i32::max_value()");
+            let message_len = stream.read_i32().await.unwrap();
+            if message_len.is_negative() {
+                panic!("message_len.is_negative()");
             }
 
             let mut deserializer = ProtocolDeserializer::new();

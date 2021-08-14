@@ -25,111 +25,6 @@ pub const EVENT_CHANNEL_SIZE: usize = 32;
 
 
 
-
-
-// #[derive(Debug, Clone)]
-// pub struct ServerEventSender {
-//     sender: mpsc::Sender<FromUiToServerEvent>,
-// }
-
-// impl ServerEventSender {
-//     pub fn new(sender: mpsc::Sender<FromUiToServerEvent>) -> Self {
-//         Self {
-//             sender,
-//         }
-//     }
-
-//     pub fn blocking_send(&mut self, event: FromUiToServerEvent) {
-//         self.sender.blocking_send(event).unwrap();
-//     }
-// }
-
-
-
-
-// #[derive(Debug, Clone)]
-// pub struct DMEventSender {
-//     sender: mpsc::UnboundedSender<ServerEvent>,
-// }
-
-// impl DMEventSender {
-//     pub fn new(sender: mpsc::UnboundedSender<ServerEvent>) -> Self {
-//         Self {
-//             sender,
-//         }
-//     }
-
-//     pub fn send(&mut self, event: DMEvent) {
-//         self.sender.send(ServerEvent::DMEvent(event)).unwrap();
-//     }
-// }
-
-
-/*
-
-
-
-enum DMState {
-    Running { handle: JoinHandle<()>, dm_sender: DeviceManagerEventSender },
-    Closed,
-}
-
-impl DMState {
-    fn new(dm: DeviceManager, dm_sender: DeviceManagerEventSender) -> Self {
-        DMState::Running {
-            handle: tokio::spawn(dm.run()),
-            dm_sender,
-        }
-    }
-
-    async fn handle_dm_event(
-        &mut self,
-        e: EventFromDeviceManager,
-        server_sender: &mut ServerEventSender,
-    ) {
-        match self {
-            Self::Running { handle, .. } => {
-                match e {
-                    EventFromDeviceManager::DeviceManagerError(e) => {
-                        eprintln!("DeviceManagerError {:?}", e);
-                        *self = Self::Closed;
-                        server_sender.send(FromUiToServerEvent::DMStateChange);
-                    }
-                    EventFromDeviceManager::TcpSupportDisabledBecauseOfError(e) => {
-                        eprintln!("TcpSupportDisabledBecauseOfError {:?}", e);
-                    }
-                    EventFromDeviceManager::DMClosed => {
-                        handle.await.unwrap();
-                        *self = Self::Closed;
-                        server_sender.send(FromUiToServerEvent::DMStateChange);
-                    }
-                }
-            }
-            Self::Closed => (),
-        }
-    }
-
-    fn closed(&self) -> bool {
-        if let Self::Closed = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn send_event_if_running(&mut self, event: DeviceManagerEvent) {
-        if let Self::Running { dm_sender, ..} = self {
-            dm_sender.send(event);
-        }
-    }
-
-    fn request_quit(&mut self) {
-        self.send_event_if_running(DeviceManagerEvent::RequestQuit);
-    }
-}
-
-*/
-
 /// Drop this type after component is closed.
 pub type ShutdownWatch = mpsc::Sender<()>;
 
@@ -188,11 +83,6 @@ impl AsyncServer {
                 }
                 Some(dm_event) = dm_reveiver.recv() => {
                     match dm_event {
-                        FromDeviceManagerToServerEvent::DeviceManagerError(error) => {
-                            eprintln!("Device manager error {:?}", error);
-                            send_shutdown_request(&mut at_sender, &mut dm_sender, &mut ui_sender).await;
-                            break;
-                        }
                         FromDeviceManagerToServerEvent::TcpSupportDisabledBecauseOfError(error) => {
                             eprintln!("TCP support disabled {:?}", error);
                         }

@@ -327,7 +327,6 @@ impl UiConnectionManager {
 
         loop {
             match read_half_with_limit.read_buf(&mut buffer).await {
-                Ok(_) => (),
                 Ok(0) => {
                     if buffer.len() == message_len as usize {
                         let message = serde_json::from_slice(&buffer).map_err(ReadError::Deserialize);
@@ -337,6 +336,7 @@ impl UiConnectionManager {
                         return (Err(ReadError::Io(error)), buffer, read_half_with_limit.into_inner());
                     }
                 }
+                Ok(_) => (),
                 Err(e) => return (Err(ReadError::Io(e)), buffer, read_half_with_limit.into_inner()),
             }
         }

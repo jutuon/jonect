@@ -1,8 +1,7 @@
 //! Multidevice command protocol
 //!
 //! # Data transfer protocol
-//! 1. Send JSON message size as u32 (big endian).
-//!    Message size max value is max value of i32.
+//! 1. Send JSON message size as i32 (big endian).
 //! 2. Send JSON message (UTF-8).
 //!
 //! # Protocol messages
@@ -117,11 +116,15 @@ impl ProtocolDeserializer {
     async fn read_async<'a, T: Deserialize<'a>, U: AsyncReadExt + Unpin>(
         &'a mut self,
         data_source: U,
-        message_size: u32,
+        message_size: i32,
     ) -> Result<T, ProtocolDeserializerError>  {
         self.data = Vec::new();
 
         let mut buf = [0; 1024];
+
+        if message_size.is_negative() {
+            panic!("message_len.is_negative()");
+        }
 
         let mut data_source_with_limit = data_source
                 .take(message_size as u64);
@@ -147,7 +150,7 @@ impl ProtocolDeserializer {
     pub async fn read_server_message<U: AsyncReadExt + Unpin>(
         &mut self,
         data_source: U,
-        message_size: u32,
+        message_size: i32,
     ) -> Result<ServerMessage, ProtocolDeserializerError> {
         self.read_async(data_source, message_size).await
     }
@@ -155,7 +158,7 @@ impl ProtocolDeserializer {
     pub async fn read_client_message<U: AsyncReadExt + Unpin>(
         &mut self,
         data_source: U,
-        message_size: u32,
+        message_size: i32,
     ) -> Result<ClientMessage, ProtocolDeserializerError> {
         self.read_async(data_source, message_size).await
     }

@@ -37,6 +37,7 @@ pub fn parse_cmd_args() -> Config {
                 .help("Multidevice server address and port number. Example: 'localhost:8080'")
                 .short("a")
                 .long("server-address")
+                .required(true)
                 .takes_value(true)))
         .get_matches();
 
