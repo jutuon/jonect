@@ -1,7 +1,6 @@
 pub mod device;
 pub mod audio;
 pub mod ui;
-pub mod utils;
 
 use self::device::{FromDeviceManagerToServerEvent, DeviceManagerEvent};
 

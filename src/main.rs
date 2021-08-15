@@ -3,6 +3,7 @@ mod settings;
 //mod ui;
 mod client;
 mod server;
+mod utils;
 
 use std::process;
 
