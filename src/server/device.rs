@@ -1,9 +1,9 @@
 pub mod protocol;
 
 use bytes::BytesMut;
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream, tcp::{ReadHalf, WriteHalf}}, sync::{mpsc, oneshot}, task::JoinHandle};
+use tokio::{io::{AsyncReadExt, AsyncWrite, AsyncWriteExt}, net::{TcpListener, TcpStream, tcp::{ReadHalf, WriteHalf}}, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use std::{collections::HashMap, convert::TryInto, io::{self, ErrorKind}};
+use std::{collections::HashMap, convert::TryInto, io::{self, ErrorKind}, fmt};
 
 use self::protocol::{ClientMessage, ServerInfo, ServerMessage};
 
@@ -12,6 +12,50 @@ use super::{EVENT_CHANNEL_SIZE, ShutdownWatch};
 #[derive(Debug)]
 pub enum FromDeviceManagerToServerEvent {
     TcpSupportDisabledBecauseOfError(TcpSupportError),
+}
+
+/// Wrapper for tokio::sync::mpsc::Sender for sending events upwards in the
+/// task tree.
+#[derive(Debug)]
+pub struct SendUpward<T: fmt::Debug> {
+    sender: mpsc::Sender<T>,
+}
+
+impl <T: fmt::Debug> SendUpward<T> {
+    /// Panic if channel is broken.
+    pub async fn send_up(&mut self, data: T) {
+        self.sender.send(data).await.expect("Error: broken channel");
+    }
+}
+
+impl <T: fmt::Debug> From<mpsc::Sender<T>> for SendUpward<T> {
+    fn from(sender: mpsc::Sender<T>) -> Self {
+        Self {
+            sender
+        }
+    }
+}
+
+/// Wrapper for tokio::sync::mpsc::Sender for sending events downwards in the
+/// task tree.
+#[derive(Debug)]
+pub struct SendDownward<T: fmt::Debug> {
+    sender: mpsc::Sender<T>,
+}
+
+impl <T: fmt::Debug> SendDownward<T> {
+    /// Panic if channel is broken.
+    pub async fn send_down(&mut self, data: T) {
+        self.sender.send(data).await.expect("Error: broken channel");
+    }
+}
+
+impl <T: fmt::Debug> From<mpsc::Sender<T>> for SendDownward<T> {
+    fn from(sender: mpsc::Sender<T>) -> Self {
+        Self {
+            sender
+        }
+    }
 }
 
 
@@ -30,7 +74,7 @@ pub enum ConnectionEvent {
 pub struct Connection {
     id: ConnectionId,
     connection: TcpStream,
-    dm_event_sender: DeviceManagerEventSender,
+    sender: SendUpward<DeviceManagerEvent>,
     receiver: mpsc::Receiver<ConnectionEvent>,
     quit_receiver: oneshot::Receiver<()>,
     _shutdown_watch: ShutdownWatch,
@@ -41,22 +85,22 @@ impl Connection {
     pub fn new(
         id: ConnectionId,
         connection: TcpStream,
-        dm_event_sender: DeviceManagerEventSender,
+        sender: SendUpward<DeviceManagerEvent>,
         _shutdown_watch: ShutdownWatch,
     ) -> (Self, mpsc::Sender<ConnectionEvent>, oneshot::Sender<()>) {
-        let (sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
+        let (event_sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
         let (quit_sender, quit_receiver) = oneshot::channel();
 
         let connection = Self {
             id,
             connection,
-            dm_event_sender,
+            sender,
             _shutdown_watch,
             receiver,
             quit_receiver,
         };
 
-        (connection, sender, quit_sender)
+        (connection, event_sender, quit_sender)
     }
 
     pub async fn connection_task(
@@ -93,18 +137,18 @@ impl Connection {
                     match result {
                         Ok(message) => {
                             let event = DeviceManagerEvent::ConnectionMessage(self.id, message);
-                            self.dm_event_sender.send(event).await;
+                            self.sender.send_up(event).await;
                         }
                         Err(e) => {
                             let event = DeviceManagerEvent::ConnectionReadError(self.id, e);
-                            self.dm_event_sender.send(event).await;
+                            self.sender.send_up(event).await;
                             break;
                         }
                     }
                 }
                 (error, w_receiver, write) = &mut w_task => {
                     let event = DeviceManagerEvent::ConnectionWriteError(self.id, error);
-                    self.dm_event_sender.send(event).await;
+                    self.sender.send_up(event).await;
                     break;
                 }
             )
@@ -204,25 +248,6 @@ pub enum DeviceManagerEvent {
     ConnectionMessage(ConnectionId, ClientMessage),
 }
 
-#[derive(Debug, Clone)]
-pub struct DeviceManagerEventSender {
-    sender: mpsc::Sender<DeviceManagerEvent>,
-}
-
-impl DeviceManagerEventSender {
-    pub fn new(sender: mpsc::Sender<DeviceManagerEvent>) -> Self {
-        Self {
-            sender,
-        }
-    }
-
-    pub async fn send(&mut self, event: DeviceManagerEvent) {
-        self.sender.send(event).await.unwrap();
-    }
-
-
-}
-
 type DeviceId = String;
 type ConnectionId = u64;
 
@@ -255,7 +280,7 @@ impl ConnectionHandle {
 pub struct DeviceManager {
     server_sender: mpsc::Sender<FromDeviceManagerToServerEvent>,
     receiver: mpsc::Receiver<DeviceManagerEvent>,
-    dm_event_sender: DeviceManagerEventSender,
+    dm_event_sender: mpsc::Sender<DeviceManagerEvent>,
     connections: HashMap<ConnectionId, ConnectionHandle>,
     next_connection_id: u64,
     _shutdown_watch: ShutdownWatch,
@@ -266,8 +291,8 @@ impl DeviceManager {
     pub fn new(
         server_sender: mpsc::Sender<FromDeviceManagerToServerEvent>,
         shutdown_watch: ShutdownWatch,
-    ) -> (Self, DeviceManagerEventSender) {
-        let (dm_event_sender, receiver) = DeviceManager::create_device_event_channel();
+    ) -> (Self, SendDownward<DeviceManagerEvent>) {
+        let (dm_event_sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
         let dm = Self {
             server_sender,
@@ -278,7 +303,7 @@ impl DeviceManager {
             _shutdown_watch: shutdown_watch,
         };
 
-        (dm, dm_event_sender)
+        (dm, dm_event_sender.into())
     }
 
     pub async fn run(mut self) {
@@ -313,7 +338,7 @@ impl DeviceManager {
                             let (connection, connection_sender, quit_sender) = Connection::new(
                                 id,
                                 stream,
-                                self.dm_event_sender.clone(),
+                                self.dm_event_sender.clone().into(),
                                 self._shutdown_watch.clone(),
                             );
 
@@ -387,12 +412,6 @@ impl DeviceManager {
             }
         }
     }
-
-    fn create_device_event_channel() -> (DeviceManagerEventSender, mpsc::Receiver<DeviceManagerEvent>) {
-        let (sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
-
-        (DeviceManagerEventSender::new(sender), receiver)
-    }
 }
 
 pub struct DeviceManagerTask;
@@ -401,7 +420,7 @@ pub struct DeviceManagerTask;
 impl DeviceManagerTask {
     pub fn task(shutdown_watch: ShutdownWatch) -> (
         JoinHandle<()>,
-        DeviceManagerEventSender,
+        SendDownward<DeviceManagerEvent>,
         mpsc::Receiver<FromDeviceManagerToServerEvent>) {
         let (sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
 

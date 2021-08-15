@@ -9,11 +9,7 @@ use {
     audio::{AudioThread, FromAudioServerToServerEvent, AudioServerEvent, EventToAudioServerSender},
 };
 
-use crate::{
-    config::Config,
-    server::{device::{DeviceManagerEventSender, DeviceManagerTask},
-    ui::{UiProtocolServerMessage, ConnectionManagerMessage, UiConnectionManager}}
-};
+use crate::{config::Config, server::{device::{DeviceManagerTask, SendDownward, SendUpward}, ui::{UiProtocolServerMessage, ConnectionManagerMessage, UiConnectionManager}}};
 
 use tokio::{sync::{mpsc}, signal};
 
@@ -61,11 +57,11 @@ impl AsyncServer {
 
         async fn send_shutdown_request(
             at_sender: &mut EventToAudioServerSender,
-            dm_sender: &mut DeviceManagerEventSender,
+            dm_sender: &mut SendDownward<DeviceManagerEvent>,
             ui_sender: &mut mpsc::Sender<ConnectionManagerMessage>,
         ) {
             at_sender.send(AudioServerEvent::RequestQuit);
-            dm_sender.send(DeviceManagerEvent::RequestQuit).await;
+            dm_sender.send_down(DeviceManagerEvent::RequestQuit).await;
             ui_sender.send(ConnectionManagerMessage::RequestQuit).await.unwrap();
         }
 
