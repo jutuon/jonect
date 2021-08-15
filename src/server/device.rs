@@ -1,9 +1,10 @@
 pub mod protocol;
 
 use bytes::BytesMut;
+use serde::Serialize;
 use tokio::{io::{AsyncReadExt, AsyncWrite, AsyncWriteExt}, net::{TcpListener, TcpStream, tcp::{ReadHalf, WriteHalf}}, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use std::{collections::HashMap, convert::TryInto, io::{self, ErrorKind}, fmt};
+use std::{collections::HashMap, convert::TryInto, fmt::{self, Debug}, io::{self, ErrorKind}, pin};
 
 use self::protocol::{ClientMessage, ServerInfo, ServerMessage};
 
@@ -23,7 +24,7 @@ pub struct SendUpward<T: fmt::Debug> {
 
 impl <T: fmt::Debug> SendUpward<T> {
     /// Panic if channel is broken.
-    pub async fn send_up(&mut self, data: T) {
+    pub async fn send_up(&self, data: T) {
         self.sender.send(data).await.expect("Error: broken channel");
     }
 }
@@ -45,7 +46,7 @@ pub struct SendDownward<T: fmt::Debug> {
 
 impl <T: fmt::Debug> SendDownward<T> {
     /// Panic if channel is broken.
-    pub async fn send_down(&mut self, data: T) {
+    pub async fn send_down(&self, data: T) {
         self.sender.send(data).await.expect("Error: broken channel");
     }
 }
@@ -67,37 +68,52 @@ pub enum TcpSupportError {
 
 #[derive(Debug)]
 pub enum ConnectionEvent {
-    SendMessage(ServerMessage),
+    ReadError(ConnectionId, ReadError),
+    WriteError(ConnectionId, WriteError),
+    Message(ConnectionId, ClientMessage),
+}
+
+impl ConnectionEvent {
+    pub fn is_error(&self) -> bool {
+        match self {
+            Self::ReadError(_,_) | Self::WriteError(_,_) => true,
+            Self::Message(_,_) => false,
+        }
+    }
 }
 
 #[derive(Debug)]
-pub struct Connection {
+pub struct Connection<R: AsyncReadExt + Unpin, W: AsyncWriteExt + Unpin, E: fmt::Debug + From<ConnectionEvent>, M: Serialize + Debug> {
     id: ConnectionId,
-    connection: TcpStream,
-    sender: SendUpward<DeviceManagerEvent>,
-    receiver: mpsc::Receiver<ConnectionEvent>,
+    read_half: R,
+    write_half: W,
+    sender: SendUpward<E>,
+    receiver: mpsc::Receiver<M>,
     quit_receiver: oneshot::Receiver<()>,
     _shutdown_watch: ShutdownWatch,
 }
-// todo
 
-impl Connection {
+impl <R: AsyncReadExt + Unpin, W: AsyncWriteExt + Unpin, E: fmt::Debug + From<ConnectionEvent>, M: Serialize + Debug> Connection<R, W, E, M> {
+    /// Returned mpsc::Sender<M> must not be dropped before a running
+    /// connection task is dropped.
     pub fn new(
         id: ConnectionId,
-        connection: TcpStream,
-        sender: SendUpward<DeviceManagerEvent>,
+        read_half: R,
+        write_half: W,
+        sender: SendUpward<E>,
         _shutdown_watch: ShutdownWatch,
-    ) -> (Self, mpsc::Sender<ConnectionEvent>, oneshot::Sender<()>) {
+    ) -> (Self, mpsc::Sender<M>, oneshot::Sender<()>) {
         let (event_sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
         let (quit_sender, quit_receiver) = oneshot::channel();
 
         let connection = Self {
             id,
-            connection,
             sender,
             _shutdown_watch,
             receiver,
             quit_receiver,
+            read_half,
+            write_half,
         };
 
         (connection, event_sender, quit_sender)
@@ -106,18 +122,13 @@ impl Connection {
     pub async fn connection_task(
         mut self,
     ) {
-        let (read, write) = self.connection.split();
-
         let buffer = BytesMut::new();
-        let r_task = Self::read_message(buffer, read);
+        let r_task = Self::read_message(buffer, self.read_half);
         tokio::pin!(r_task);
 
         let (w_sender, w_receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
-        let w_task = Self::handle_writing(w_receiver, write);
+        let w_task = Self::handle_writing(w_receiver, self.write_half);
         tokio::pin!(w_task);
-
-        let message = ServerMessage::ServerInfo(ServerInfo::new("Test server"));
-        w_sender.send(message).await.unwrap();
 
         loop {
             tokio::select!(
@@ -126,32 +137,43 @@ impl Connection {
                     return;
                 }
                 event = self.receiver.recv() => {
-                    match event.unwrap() {
-                        ConnectionEvent::SendMessage(message) => {
-                            w_sender.send(message).await.unwrap();
-                        }
-                    }
+                    tokio::select!(
+                        result = w_sender.send(event.unwrap()) => result.unwrap(),
+                        quit = &mut self.quit_receiver => return quit.unwrap(),
+                    );
+                    continue;
                 }
                 (result, buffer, read) = &mut r_task => {
                     r_task.set(Self::read_message(buffer, read));
+
                     match result {
                         Ok(message) => {
-                            let event = DeviceManagerEvent::ConnectionMessage(self.id, message);
-                            self.sender.send_up(event).await;
+                            let event = ConnectionEvent::Message(self.id, message);
+                            tokio::select!(
+                                _ = self.sender.send_up(event.into()) => (),
+                                quit = &mut self.quit_receiver => return quit.unwrap(),
+                            );
                         }
+
                         Err(e) => {
-                            let event = DeviceManagerEvent::ConnectionReadError(self.id, e);
-                            self.sender.send_up(event).await;
+                            let event = ConnectionEvent::ReadError(self.id, e);
+                            tokio::select!(
+                                _ = self.sender.send_up(event.into()) => (),
+                                quit = &mut self.quit_receiver => return quit.unwrap(),
+                            );
                             break;
                         }
                     }
                 }
-                (error, w_receiver, write) = &mut w_task => {
-                    let event = DeviceManagerEvent::ConnectionWriteError(self.id, error);
-                    self.sender.send_up(event).await;
+                error = &mut w_task => {
+                    let event = ConnectionEvent::WriteError(self.id, error);
+                    tokio::select!(
+                        _ = self.sender.send_up(event.into()) => (),
+                        quit = &mut self.quit_receiver => return quit.unwrap(),
+                    );
                     break;
                 }
-            )
+            );
         }
 
         self.quit_receiver.await.unwrap();
@@ -159,8 +181,8 @@ impl Connection {
 
     async fn read_message(
         mut buffer: BytesMut,
-        mut read_half: ReadHalf<'_>
-    ) -> (Result<ClientMessage, ReadError>, BytesMut, ReadHalf<'_>) {
+        mut read_half: R,
+    ) -> (Result<ClientMessage, ReadError>, BytesMut, R) {
         buffer.clear();
 
         let message_len = match read_half.read_i32().await.map_err(ReadError::Io) {
@@ -192,33 +214,33 @@ impl Connection {
     }
 
     async fn handle_writing(
-        mut receiver: mpsc::Receiver<ServerMessage>,
-        mut write_half: WriteHalf<'_>,
-    ) -> (WriteError, mpsc::Receiver<ServerMessage>, WriteHalf<'_>) {
+        mut receiver: mpsc::Receiver<M>,
+        mut write_half: W,
+    ) -> WriteError {
         loop {
             let message = receiver.recv().await.unwrap();
 
             let data = match serde_json::to_string(&message) {
                 Ok(data) => data,
                 Err(e) => {
-                    return (WriteError::Serialize(e), receiver, write_half);
+                    return WriteError::Serialize(e);
                 }
             };
 
             let data_len: i32 = match data.len().try_into() {
                 Ok(len) => len,
                 Err(_) => {
-                    return (WriteError::MessageSize(data), receiver, write_half);
+                    return WriteError::MessageSize(data);
                 }
             };
 
             let data_len = data_len.to_be_bytes();
             if let Err(e) = write_half.write_all(&data_len).await {
-                return (WriteError::Io(e), receiver, write_half);
+                return WriteError::Io(e);
             };
 
             if let Err(e) = write_half.write_all(data.as_bytes()).await {
-                return (WriteError::Io(e), receiver, write_half);
+                return WriteError::Io(e);
             };
         }
     }
@@ -243,9 +265,13 @@ pub enum WriteError {
 pub enum DeviceManagerEvent {
     RequestQuit,
     Message(String),
-    ConnectionReadError(ConnectionId, ReadError),
-    ConnectionWriteError(ConnectionId, WriteError),
-    ConnectionMessage(ConnectionId, ClientMessage),
+    ConnectionEvent(ConnectionEvent),
+}
+
+impl From<ConnectionEvent> for DeviceManagerEvent {
+    fn from(e: ConnectionEvent) -> Self {
+        DeviceManagerEvent::ConnectionEvent(e)
+    }
 }
 
 type DeviceId = String;
@@ -255,7 +281,7 @@ pub struct ConnectionHandle {
     id: ConnectionId,
     device_id: Option<DeviceId>,
     task_handle: JoinHandle<()>,
-    sender: mpsc::Sender<ConnectionEvent>,
+    sender: mpsc::Sender<ServerMessage>,
     quit_sender: oneshot::Sender<()>,
 }
 
@@ -264,7 +290,7 @@ impl ConnectionHandle {
         id: ConnectionId,
         device_id: Option<DeviceId>,
         task_handle: JoinHandle<()>,
-        sender: mpsc::Sender<ConnectionEvent>,
+        sender: mpsc::Sender<ServerMessage>,
         quit_sender: oneshot::Sender<()>,
     ) -> Self {
         Self {
@@ -335,9 +361,11 @@ impl DeviceManager {
                                 }
                             };
 
+                            let (read_half, write_half) = stream.into_split();
                             let (connection, connection_sender, quit_sender) = Connection::new(
                                 id,
-                                stream,
+                                read_half,
+                                write_half,
                                 self.dm_event_sender.clone().into(),
                                 self._shutdown_watch.clone(),
                             );
@@ -353,6 +381,9 @@ impl DeviceManager {
                                 connection_sender,
                                 quit_sender,
                             );
+
+                            let message = ServerMessage::ServerInfo(ServerInfo::new("Test server"));
+                            connection_handle.sender.send(message).await.unwrap();
 
                             self.connections.insert(id, connection_handle);
                         }
@@ -370,22 +401,26 @@ impl DeviceManager {
                         DeviceManagerEvent::Message(_) => {
 
                         }
-                        DeviceManagerEvent::ConnectionReadError(id, error) => {
-                            eprintln!("Connection id {} read error {:?}", id, error);
+                        DeviceManagerEvent::ConnectionEvent(event) => {
+                            match event {
+                                ConnectionEvent::ReadError(id, error) => {
+                                    eprintln!("Connection id {} read error {:?}", id, error);
 
-                            let connection = self.connections.remove(&id).unwrap();
-                            connection.quit_sender.send(()).unwrap();
-                            connection.task_handle.await.unwrap();
-                        }
-                        DeviceManagerEvent::ConnectionWriteError(id, error) => {
-                            eprintln!("Connection id {} write error {:?}", id, error);
+                                    let connection = self.connections.remove(&id).unwrap();
+                                    connection.quit_sender.send(()).unwrap();
+                                    connection.task_handle.await.unwrap();
+                                }
+                                ConnectionEvent::WriteError(id, error) => {
+                                    eprintln!("Connection id {} write error {:?}", id, error);
 
-                            let connection = self.connections.remove(&id).unwrap();
-                            connection.quit_sender.send(()).unwrap();
-                            connection.task_handle.await.unwrap();
-                        }
-                        DeviceManagerEvent::ConnectionMessage(id, message) => {
-                            println!("Connection id {} message {:?}", id, message);
+                                    let connection = self.connections.remove(&id).unwrap();
+                                    connection.quit_sender.send(()).unwrap();
+                                    connection.task_handle.await.unwrap();
+                                }
+                                ConnectionEvent::Message(id, message) => {
+                                    println!("Connection id {} message {:?}", id, message);
+                                }
+                            }
                         }
                         DeviceManagerEvent::RequestQuit => {
                             break;
