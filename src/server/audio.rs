@@ -4,8 +4,7 @@ use std::{
 
 use self::audio_server::{AudioServer};
 
-use super::{EVENT_CHANNEL_SIZE, ShutdownWatch};
-
+use crate::{config::EVENT_CHANNEL_SIZE, utils::ShutdownWatch};
 
 use tokio::sync::mpsc;
 

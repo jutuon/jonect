@@ -8,36 +8,21 @@ use {
     audio::{AudioThread, FromAudioServerToServerEvent, AudioServerEvent, EventToAudioServerSender},
 };
 
-use crate::{config::Config, server::{device::{DeviceManagerTask, SendDownward, SendUpward}, ui::{UiProtocolServerMessage, ConnectionManagerMessage, UiConnectionManager}}};
+use crate::{config::Config, server::{device::{DeviceManagerTask}, ui::{UiProtocolServerMessage, ConnectionManagerMessage, UiConnectionManager}}, utils::{SendDownward, SendUpward}};
 
 use tokio::{sync::{mpsc}, signal};
 
 use tokio::runtime::Runtime;
 
-
-
-pub const EVENT_CHANNEL_SIZE: usize = 32;
-
-
-
-/// Drop this type after component is closed.
-pub type ShutdownWatch = mpsc::Sender<()>;
-
 pub struct AsyncServer {
-    //sender: FromServerToUiSender,
-    //ui_event_receiver: mpsc::Receiver<FromUiToServerEvent>,
     config: Config,
 }
 
 impl AsyncServer {
     pub fn new(
-        //sender: FromServerToUiSender,
-        //ui_event_receiver: mpsc::Receiver<FromUiToServerEvent>,
         config: Config,
     ) -> Self {
         Self {
-            //sender,
-            //ui_event_receiver,
             config,
         }
     }
@@ -190,18 +175,10 @@ impl AsyncServer {
 pub struct Server;
 
 impl Server {
-    pub fn run(
-        // mut sender: FromServerToUiSender,
-        // receiver: mpsc::Receiver<FromUiToServerEvent>,
-        // server_event_sender: ServerEventSender,
-        config: Config,
-    ) {
-        // sender.send(Event::InitStart);
-
+    pub fn run(config: Config) {
         let rt = match Runtime::new() {
             Ok(rt) => rt,
             Err(e) => {
-                //sender.send(Event::InitError);
                 eprintln!("{}", e);
                 return;
             }
@@ -211,14 +188,4 @@ impl Server {
 
         rt.block_on(server.run());
     }
-
-    // pub fn create_server_event_channel() -> (ServerEventSender, mpsc::Receiver<FromUiToServerEvent>) {
-    //     let (sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
-
-    //     (ServerEventSender::new(sender), receiver)
-    // }
-
-    // pub fn create_dm_event_channel(server_event_sender: ServerEventSender) -> DMEventSender {
-    //     DMEventSender::new(server_event_sender.sender)
-    // }
 }

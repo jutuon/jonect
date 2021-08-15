@@ -6,7 +6,7 @@ use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, WriteHalf}}, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use super::{EVENT_CHANNEL_SIZE, ShutdownWatch};
+use crate::{config::EVENT_CHANNEL_SIZE, utils::ShutdownWatch};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum UiMessage {

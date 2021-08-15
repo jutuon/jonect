@@ -2,6 +2,8 @@ use std::net::{SocketAddr, ToSocketAddrs};
 
 use clap::{App, Arg, SubCommand};
 
+pub const EVENT_CHANNEL_SIZE: usize = 32;
+
 
 #[derive(Debug, Clone)]
 pub struct TestClientConfig {
