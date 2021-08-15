@@ -1,8 +1,8 @@
 use bytes::BytesMut;
 use serde::{Serialize, de::DeserializeOwned};
-use tokio::{io::{AsyncReadExt, AsyncWrite, AsyncWriteExt}, net::{TcpListener, TcpStream, tcp::{ReadHalf, WriteHalf}}, sync::{mpsc, oneshot}, task::JoinHandle};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use std::{convert::TryInto, fmt::{self, Debug}, io::{self, ErrorKind}, marker::PhantomData, pin};
+use std::{convert::TryInto, fmt::{self, Debug}, io::{ErrorKind}};
 
 use crate::config::EVENT_CHANNEL_SIZE;
 
@@ -56,6 +56,8 @@ impl <T: fmt::Debug> From<mpsc::Sender<T>> for SendDownward<T> {
     }
 }
 
+/// Panic might happen if connection handle is dropped before the task
+/// is closed.
 pub struct ConnectionHandle<M: Debug> {
     id: ConnectionId,
     task_handle: JoinHandle<()>,
@@ -126,10 +128,10 @@ pub enum WriteError {
 
 #[derive(Debug)]
 pub struct Connection<
-    R: AsyncReadExt + Unpin,
-    W: AsyncWriteExt + Unpin,
-    ReceiveM: DeserializeOwned + Debug,
-    SendM: Serialize + Debug
+    R: AsyncReadExt + Unpin + Send + 'static,
+    W: AsyncWriteExt + Unpin + Send + 'static,
+    ReceiveM: DeserializeOwned + Debug + Send + 'static,
+    SendM: Serialize + Debug + Send + 'static
 > {
     id: ConnectionId,
     read_half: R,
@@ -141,20 +143,19 @@ pub struct Connection<
 }
 
 impl <
-    R: AsyncReadExt + Unpin,
-    W: AsyncWriteExt + Unpin,
-    ReceiveM: DeserializeOwned + Debug,
-    SendM: Serialize + Debug,
+    R: AsyncReadExt + Unpin + Send + 'static,
+    W: AsyncWriteExt + Unpin + Send + 'static,
+    ReceiveM: DeserializeOwned + Debug + Send + 'static,
+    SendM: Serialize + Debug + Send + 'static,
     > Connection<R, W, ReceiveM, SendM> {
-    /// Returned mpsc::Sender<M> must not be dropped before a running
-    /// connection task is dropped.
-    pub fn new(
+
+    pub fn spawn_connection_task(
         id: ConnectionId,
         read_half: R,
         write_half: W,
         sender: SendUpward<ConnectionEvent<ReceiveM>>,
         _shutdown_watch: ShutdownWatch,
-    ) -> (Self, SendDownward<SendM>, QuitSender) {
+    ) -> ConnectionHandle<SendM> {
         let (event_sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
         let (quit_sender, quit_receiver) = oneshot::channel();
 
@@ -168,7 +169,16 @@ impl <
             write_half,
         };
 
-        (connection, event_sender.into(), quit_sender)
+        let task_handle = tokio::spawn(async move {
+            connection.connection_task().await
+        });
+
+        ConnectionHandle::new(
+            id,
+            task_handle,
+            event_sender.into(),
+            quit_sender,
+        )
     }
 
     pub async fn connection_task(

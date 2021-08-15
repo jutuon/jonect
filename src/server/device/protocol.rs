@@ -13,9 +13,6 @@
 //!    are received.
 
 use serde::{Serialize, Deserialize};
-use tokio::io::AsyncReadExt;
-
-use std::io;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -93,73 +90,5 @@ impl ClientInfo {
             version: "0.1".to_string(),
             id: id.into(),
         }
-    }
-}
-
-#[derive(Debug)]
-pub enum ProtocolDeserializerError {
-    IoError(io::Error),
-    DeserializerError(serde_json::Error),
-}
-
-pub struct ProtocolDeserializer {
-    data: Vec<u8>,
-}
-
-impl ProtocolDeserializer {
-    pub fn new() -> Self {
-        Self {
-            data: vec![],
-        }
-    }
-
-    async fn read_async<'a, T: Deserialize<'a>, U: AsyncReadExt + Unpin>(
-        &'a mut self,
-        data_source: U,
-        message_size: i32,
-    ) -> Result<T, ProtocolDeserializerError>  {
-        self.data = Vec::new();
-
-        let mut buf = [0; 1024];
-
-        if message_size.is_negative() {
-            panic!("message_len.is_negative()");
-        }
-
-        let mut data_source_with_limit = data_source
-                .take(message_size as u64);
-
-        loop {
-            let read_count = data_source_with_limit
-            .read(&mut buf)
-            .await
-            .map_err(ProtocolDeserializerError::IoError)?;
-
-            match read_count {
-                0 => break,
-                data_len => self.data.extend(buf.iter().take(data_len)),
-            }
-        }
-
-        let message = serde_json::from_slice(&self.data)
-            .map_err(ProtocolDeserializerError::DeserializerError)?;
-
-        Ok(message)
-    }
-
-    pub async fn read_server_message<U: AsyncReadExt + Unpin>(
-        &mut self,
-        data_source: U,
-        message_size: i32,
-    ) -> Result<ServerMessage, ProtocolDeserializerError> {
-        self.read_async(data_source, message_size).await
-    }
-
-    pub async fn read_client_message<U: AsyncReadExt + Unpin>(
-        &mut self,
-        data_source: U,
-        message_size: i32,
-    ) -> Result<ClientMessage, ProtocolDeserializerError> {
-        self.read_async(data_source, message_size).await
     }
 }

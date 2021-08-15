@@ -93,23 +93,12 @@ impl DeviceManager {
                             };
 
                             let (read_half, write_half) = stream.into_split();
-                            let (connection, connection_sender, quit_sender) = Connection::new(
+                            let connection_handle = Connection::spawn_connection_task(
                                 id,
                                 read_half,
                                 write_half,
                                 connections_sender.clone().into(),
                                 self._shutdown_watch.clone(),
-                            );
-
-                            let task_handle = tokio::spawn(async move {
-                                connection.connection_task().await
-                            });
-
-                            let connection_handle = ConnectionHandle::new(
-                                id,
-                                task_handle,
-                                connection_sender,
-                                quit_sender,
                             );
 
                             let message = ServerMessage::ServerInfo(ServerInfo::new("Test server"));

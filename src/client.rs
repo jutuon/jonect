@@ -1,10 +1,10 @@
 //! Test client
 
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream, runtime::Runtime};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream, runtime::Runtime, sync::mpsc, signal};
 
-use crate::{config::TestClientConfig, server::device::protocol::ServerMessage};
+use crate::{config::{EVENT_CHANNEL_SIZE, TestClientConfig}, server::device::protocol::ServerMessage, utils::{Connection, ConnectionEvent}};
 
-use crate::server::device::{protocol::{ClientInfo, ClientMessage, ProtocolDeserializer}};
+use crate::server::device::{protocol::{ClientInfo, ClientMessage}};
 
 use std::convert::TryInto;
 
@@ -43,33 +43,62 @@ impl AsyncClient {
     }
 
     pub async fn run(self) {
-        let mut stream = TcpStream::connect(self.config.address).await.unwrap();
+        let (shutdown_watch, mut shutdown_watch_receiver) = mpsc::channel(1);
+
+        let stream = TcpStream::connect(self.config.address).await.unwrap();
+        let (read_half, write_half) = stream.into_split();
+
+        let (sender, mut connections_receiver) =
+            mpsc::channel::<ConnectionEvent<ServerMessage>>(EVENT_CHANNEL_SIZE);
+
+        let connection_handle = Connection::spawn_connection_task(
+            0,
+            read_half,
+            write_half,
+            sender.into(),
+            shutdown_watch
+        );
 
         let message = ClientMessage::ClientInfo(ClientInfo::new("test"));
+        connection_handle.send_down(message).await;
 
-        let data = serde_json::to_vec(&message).unwrap();
-        let data_len: i32 = data
-            .len()
-            .try_into()
-            .unwrap();
-
-        stream.write_all(&data_len.to_be_bytes()).await.unwrap();
-        stream.write_all(&data).await.unwrap();
+        let mut ctrl_c_listener_enabled = true;
 
         loop {
-            let message_len = stream.read_i32().await.unwrap();
-            if message_len.is_negative() {
-                panic!("message_len.is_negative()");
+            tokio::select! {
+                event = connections_receiver.recv() => {
+                    match event.unwrap() {
+                        ConnectionEvent::ReadError(id, error) => {
+                            eprintln!("Connection id {} read error {:?}", id, error);
+                            break;
+                        }
+                        ConnectionEvent::WriteError(id, error) => {
+                            eprintln!("Connection id {} write error {:?}", id, error);
+                            break;
+                        }
+                        ConnectionEvent::Message(id, message) => {
+                            println!("Connection id {} message {:?}", id, message);
+                        }
+                    }
+                }
+                quit_request = signal::ctrl_c(), if ctrl_c_listener_enabled => {
+                    match quit_request {
+                        Ok(()) => {
+                            break;
+                        }
+                        Err(e) => {
+                            ctrl_c_listener_enabled = false;
+                            eprintln!("Failed to listen CTRL+C. Error: {}", e);
+                        }
+                    }
+
+                }
             }
-
-            let mut deserializer = ProtocolDeserializer::new();
-            let message: ServerMessage = deserializer
-                .read_server_message(&mut stream, message_len)
-                .await
-                .unwrap();
-
-            println!("{:?}", message);
         }
 
+        // Quit started. Wait all components to close.
+
+        connection_handle.quit().await;
+        let _ = shutdown_watch_receiver.recv().await;
     }
 }

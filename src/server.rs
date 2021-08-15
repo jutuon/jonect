@@ -52,7 +52,6 @@ impl AsyncServer {
         let mut ctrl_c_listener_enabled = true;
 
         loop {
-
             tokio::select! {
                 Some(at_event) = at.next_event() => {
                     match at_event {
