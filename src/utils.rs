@@ -9,6 +9,7 @@ use crate::config::EVENT_CHANNEL_SIZE;
 /// Drop this type after component is closed.
 pub type ShutdownWatch = mpsc::Sender<()>;
 pub type QuitSender = oneshot::Sender<()>;
+pub type QuitReceiver = oneshot::Receiver<()>;
 
 pub type ConnectionId = u64;
 

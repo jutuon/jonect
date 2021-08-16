@@ -8,7 +8,7 @@ use {
     audio::{AudioThread, FromAudioServerToServerEvent, AudioServerEvent, EventToAudioServerSender},
 };
 
-use crate::{config::Config, server::{device::{DeviceManagerTask}, ui::{UiProtocolServerMessage, ConnectionManagerMessage, UiConnectionManager}}, utils::{SendDownward, SendUpward}};
+use crate::{config::Config, server::{device::{DeviceManagerTask}, ui::{UiConnectionManager, UiProtocolFromUiToServer}}, utils::{QuitSender, SendDownward, SendUpward}};
 
 use tokio::{sync::{mpsc}, signal};
 
@@ -33,7 +33,7 @@ impl AsyncServer {
 
         let (mut at, mut at_sender) = AudioThread::start(shutdown_watch.clone()).await;
         let (dm_task_handle, mut dm_sender, mut dm_reveiver) = DeviceManagerTask::task(shutdown_watch.clone());
-        let (ui_task_handle, mut ui_sender, mut server_receiver) = UiConnectionManager::task(shutdown_watch.clone());
+        let (ui_task_handle, mut ui_sender, mut server_receiver, ui_quit_sender) = UiConnectionManager::task(shutdown_watch.clone());
 
         // Drop initial instance of the shutdown watch to make the receiver
         // to notice the shutdown.
@@ -42,11 +42,11 @@ impl AsyncServer {
         async fn send_shutdown_request(
             at_sender: &mut EventToAudioServerSender,
             dm_sender: &mut SendDownward<DeviceManagerEvent>,
-            ui_sender: &mut mpsc::Sender<ConnectionManagerMessage>,
+            ui_sender: QuitSender,
         ) {
             at_sender.send(AudioServerEvent::RequestQuit);
             dm_sender.send_down(DeviceManagerEvent::RequestQuit).await;
-            ui_sender.send(ConnectionManagerMessage::RequestQuit).await.unwrap();
+            ui_sender.send(()).unwrap();
         }
 
         let mut ctrl_c_listener_enabled = true;
@@ -69,7 +69,7 @@ impl AsyncServer {
                 }
                 Some(ui_event) = server_receiver.recv() => {
                     match ui_event {
-                        UiProtocolServerMessage::NotificationTest => {
+                        UiProtocolFromUiToServer::NotificationTest => {
                             println!("UI notification");
                         }
                     }
@@ -77,7 +77,7 @@ impl AsyncServer {
                 quit_request = signal::ctrl_c(), if ctrl_c_listener_enabled => {
                     match quit_request {
                         Ok(()) => {
-                            send_shutdown_request(&mut at_sender, &mut dm_sender, &mut ui_sender).await;
+                            send_shutdown_request(&mut at_sender, &mut dm_sender, ui_quit_sender).await;
                             break;
                         }
                         Err(e) => {
