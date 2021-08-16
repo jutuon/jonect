@@ -1,10 +1,12 @@
 mod app;
+mod logic;
 
 use self::app::App;
+use self::logic::ServerConnectionHandle;
 
 use super::Ui;
 
-use crate::server::ui::{Event};
+use crate::server::ui::{UiProtocolFromServerToUi};
 use crate::{config::Config, settings::SettingsManager};
 
 use gtk::gio::{prelude::*};
@@ -33,14 +35,16 @@ impl Ui for GtkUi {
 
         let (sender, receiver) = MainContext::channel::<UiEvent>(gtk::glib::PRIORITY_DEFAULT);
 
-        let logic = Logic::new(config, settings, FromServerToUiSender::new(sender.clone()));
-        let mut app = App::new(sender, logic);
+        let handle = ServerConnectionHandle::new(FromServerToUiSender::new(sender.clone()));
+        let mut app = App::new(sender, handle);
 
         receiver.attach(None, move |event| {
             match event {
                 UiEvent::ButtonClicked(id) => app.handle_button(id),
                 UiEvent::CloseMainWindow => app.handle_close_main_window(),
                 UiEvent::LogicEvent(e) => app.handle_logic_event(e),
+                UiEvent::ServerDisconnected => app.handle_server_disconnect(),
+                UiEvent::ConnectToServerFailed => app.handle_connect_to_server_failed(),
                 UiEvent::Quit => {
                     app.quit();
                     gtk::main_quit();
@@ -64,9 +68,21 @@ impl FromServerToUiSender {
         Self { sender }
     }
 
-    pub fn send(&mut self, event: Event) {
+    pub fn send(&mut self, event: UiProtocolFromServerToUi) {
         self.sender
             .send(UiEvent::LogicEvent(event))
+            .expect(SEND_ERROR);
+    }
+
+    pub fn send_server_disconnected_message(&mut self) {
+        self.sender
+            .send(UiEvent::ServerDisconnected)
+            .expect(SEND_ERROR);
+    }
+
+    pub fn send_connect_to_server_failed(&mut self) {
+        self.sender
+            .send(UiEvent::ConnectToServerFailed)
             .expect(SEND_ERROR);
     }
 }

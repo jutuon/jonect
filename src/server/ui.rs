@@ -7,15 +7,17 @@ use crate::{config::EVENT_CHANNEL_SIZE, utils::{Connection, ConnectionEvent, Qui
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum UiProtocolFromServerToUi {
-    InitStart,
-    InitError,
-    InitEnd,
     Message(String),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum UiProtocolFromUiToServer {
     NotificationTest,
+}
+
+enum QuitReason {
+    QuitRequest,
+    ConnectionError,
 }
 
 pub struct UiConnectionManager {
@@ -76,7 +78,10 @@ impl UiConnectionManager {
                         }
                     };
 
-                    self.handle_connection(socket).await;
+                    match self.handle_connection(socket).await {
+                        QuitReason::QuitRequest => return,
+                        QuitReason::ConnectionError => (),
+                    }
                 }
             }
         }
@@ -85,7 +90,7 @@ impl UiConnectionManager {
     async fn handle_connection(
         &mut self,
         connection: TcpStream,
-    ) {
+    ) -> QuitReason {
         let (read_half, write_half) = connection.into_split();
 
         let (sender, mut connections_receiver) =
@@ -99,31 +104,47 @@ impl UiConnectionManager {
             self.shutdown_watch.clone(),
         );
 
-        loop {
+        let quit_reason = loop {
             tokio::select! {
-                event = &mut self.quit_receiver => return event.unwrap(),
-                event = self.ui_receiver.recv() => {
-                    connection_handle.send_down(event.unwrap()).await;
+                event = &mut self.quit_receiver => {
+                    event.unwrap();
+                    break QuitReason::QuitRequest;
+                },
+                message = self.ui_receiver.recv() => {
+                    tokio::select! {
+                        result = &mut self.quit_receiver => {
+                            result.unwrap();
+                            break QuitReason::QuitRequest;
+                        }
+                        _ = connection_handle.send_down(message) => (),
+                    }
                 }
                 event = connections_receiver.recv() => {
                     match event.unwrap() {
                         ConnectionEvent::ReadError(id, error) => {
                             eprintln!("Connection id {} read error {:?}", id, error);
-                            break;
+                            break QuitReason::ConnectionError;
                         }
                         ConnectionEvent::WriteError(id, error) => {
                             eprintln!("Connection id {} write error {:?}", id, error);
-                            break;
+                            break QuitReason::ConnectionError;
                         }
                         ConnectionEvent::Message(_, message) => {
-                            self.server_sender.send_up(message).await;
+                            tokio::select! {
+                                result = &mut self.quit_receiver => {
+                                    result.unwrap();
+                                    break QuitReason::QuitRequest;
+                                }
+                                _ = self.server_sender.send_up(message) => (),
+                            };
                         }
                     }
                 }
 
             }
-        }
+        };
 
         connection_handle.quit().await;
+        quit_reason
     }
 }

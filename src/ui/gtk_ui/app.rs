@@ -1,4 +1,6 @@
-use crate::server::ui::{Event};
+use crate::server::ui::{UiProtocolFromServerToUi, UiProtocolFromUiToServer};
+
+use super::logic::ServerConnectionHandle;
 
 use gtk::gio::{prelude::*};
 use gtk::glib::{Sender};
@@ -9,21 +11,22 @@ use super::SEND_ERROR;
 #[derive(Debug)]
 pub enum UiEvent {
     ButtonClicked(&'static str),
-    LogicEvent(Event),
+    LogicEvent(UiProtocolFromServerToUi),
+    ServerDisconnected,
+    ConnectToServerFailed,
     CloseMainWindow,
     Quit,
 }
 
 pub struct App {
     sender: Sender<UiEvent>,
-    logic: Logic,
+    handle: ServerConnectionHandle,
     text: Label,
     main_window: Window,
-    logic_running: bool,
 }
 
 impl App {
-    pub fn new(sender: Sender<UiEvent>, logic: Logic) -> Self {
+    pub fn new(sender: Sender<UiEvent>, handle: ServerConnectionHandle) -> Self {
         let window = Window::new(gtk::WindowType::Toplevel);
         window.set_title("Multidevice");
         window.set_default_size(640, 480);
@@ -52,55 +55,44 @@ impl App {
 
         App {
             sender,
-            logic,
+            handle,
             text,
             main_window: window,
-            logic_running: false,
         }
     }
 
     pub fn handle_close_main_window(&mut self) {
         self.main_window.close();
-        self.logic.request_quit();
+        self.sender.send(UiEvent::Quit).expect(SEND_ERROR);
     }
 
-    pub fn handle_logic_event(&mut self, e: Event) {
-        if !self.logic_running {
-            match e {
-                Event::InitEnd => {
-                    self.logic_running = true;
-                }
-                _ => (),
-            }
-
-            return;
-        }
-
+    pub fn handle_logic_event(&mut self, e: UiProtocolFromServerToUi) {
         match e {
-            Event::InitStart | Event::InitEnd => (),
-            Event::InitError => {
-                self.sender.send(UiEvent::Quit).expect(SEND_ERROR);
-            }
-            Event::Message(s) => {
+            UiProtocolFromServerToUi::Message(s) => {
                 self.text.set_text(&s);
                 println!("{}", s);
             }
-            Event::CloseProgram => {
-                self.sender.send(UiEvent::Quit).expect(SEND_ERROR);
-            }
         }
+    }
+
+    pub fn handle_connect_to_server_failed(&mut self) {
+        eprintln!("Connecting to the server failed.");
+    }
+
+    pub fn handle_server_disconnect(&mut self) {
+        eprintln!("Server disconnected.")
     }
 
     pub fn handle_button(&mut self, id: &'static str) {
         match id {
             "test" => {
-                self.logic.send_message();
+                self.handle.send(UiProtocolFromUiToServer::NotificationTest);
             }
             _ => (),
         }
     }
 
     pub fn quit(&mut self) {
-        self.logic.join_logic_thread();
+        self.handle.quit();
     }
 }

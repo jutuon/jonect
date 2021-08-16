@@ -15,6 +15,7 @@ pub struct Config {
     pub test: bool,
     pub pa_source_name: Option<String>,
     pub test_client_config: Option<TestClientConfig>,
+    pub gui: Option<()>,
 }
 
 /// Parse command line args. Program may exit when running this.
@@ -41,6 +42,8 @@ pub fn parse_cmd_args() -> Config {
                 .long("server-address")
                 .required(true)
                 .takes_value(true)))
+        .subcommand(SubCommand::with_name("gui")
+                .about("Run Gtk GUI application for controlling the server."))
         .get_matches();
 
     let pa_source_name = matches.value_of("pa-source-name").map(|s| s.to_owned());
@@ -58,9 +61,12 @@ pub fn parse_cmd_args() -> Config {
         }
     });
 
+    let gui = matches.subcommand_matches("gui").map(|_| ());
+
     Config {
         test: matches.is_present("test"),
         pa_source_name,
         test_client_config,
+        gui,
     }
 }

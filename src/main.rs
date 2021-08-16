@@ -1,6 +1,6 @@
 mod config;
 mod settings;
-//mod ui;
+mod ui;
 mod client;
 mod server;
 mod utils;
@@ -9,7 +9,7 @@ use std::process;
 
 use crate::{client::TestClient, server::Server};
 
-//use ui::{gtk_ui::GtkUi, Ui};
+use ui::{gtk_ui::GtkUi, Ui};
 
 fn main() {
     let config = config::parse_cmd_args();
@@ -34,7 +34,10 @@ fn main() {
 
     println!("{:#?}", settings.get());
 
-    //GtkUi::run(config, settings);
+    if config.gui.is_some() {
+        GtkUi::run(config, settings);
+        return;
+    }
 
     Server::run(config);
 }
