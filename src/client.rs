@@ -78,6 +78,15 @@ impl AsyncClient {
                         }
                         ConnectionEvent::Message(id, message) => {
                             println!("Connection id {} message {:?}", id, message);
+                            match message {
+                                ServerMessage::Ping => {
+                                    connection_handle.send_down(ClientMessage::PingResponse).await;
+                                },
+                                ServerMessage::PlayAudioStream(info) => {
+                                    // TODO
+                                }
+                                _ => (),
+                            }
                         }
                     }
                 }

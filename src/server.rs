@@ -72,6 +72,9 @@ impl AsyncServer {
                         UiProtocolFromUiToServer::NotificationTest => {
                             println!("UI notification");
                         }
+                        UiProtocolFromUiToServer::RunDeviceConnectionPing => {
+                            dm_sender.send_down(DeviceManagerEvent::RunDeviceConnectionPing).await;
+                        }
                     }
                 }
                 quit_request = signal::ctrl_c(), if ctrl_c_listener_enabled => {

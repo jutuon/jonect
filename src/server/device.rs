@@ -1,14 +1,15 @@
 pub mod protocol;
+pub mod state;
 
 use bytes::BytesMut;
 use serde::Serialize;
 use tokio::{io::{AsyncReadExt, AsyncWrite, AsyncWriteExt}, net::{TcpListener, TcpStream, tcp::{ReadHalf, WriteHalf}}, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use std::{collections::HashMap, convert::TryInto, fmt::{self, Debug}, io::{self, ErrorKind}, pin};
+use std::{collections::HashMap, convert::TryInto, fmt::{self, Debug}, io::{self, ErrorKind}, pin, time::Duration};
 
 use crate::utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward, ShutdownWatch};
 
-use self::protocol::{ClientMessage, ServerInfo, ServerMessage};
+use self::{protocol::{ClientMessage, ServerInfo, ServerMessage}, state::{DeviceEvent, DeviceState}};
 
 use crate::config::{EVENT_CHANNEL_SIZE};
 
@@ -28,6 +29,7 @@ pub enum TcpSupportError {
 pub enum DeviceManagerEvent {
     RequestQuit,
     Message(String),
+    RunDeviceConnectionPing,
 }
 
 type DeviceId = String;
@@ -35,7 +37,6 @@ type DeviceId = String;
 pub struct DeviceManager {
     server_sender: mpsc::Sender<FromDeviceManagerToServerEvent>,
     receiver: mpsc::Receiver<DeviceManagerEvent>,
-    dm_event_sender: mpsc::Sender<DeviceManagerEvent>,
     next_connection_id: u64,
     _shutdown_watch: ShutdownWatch,
 }
@@ -51,7 +52,6 @@ impl DeviceManager {
         let dm = Self {
             server_sender,
             receiver,
-            dm_event_sender: dm_event_sender.clone(),
             next_connection_id: 0,
             _shutdown_watch: shutdown_watch,
         };
@@ -74,9 +74,13 @@ impl DeviceManager {
 
         let mut tcp_listener_enabled = true;
 
-        let mut connections = HashMap::new();
+        let mut connections = HashMap::<ConnectionId, DeviceState>::new();
         let (connections_sender, mut connections_receiver) =
             mpsc::channel::<ConnectionEvent<ClientMessage>>(EVENT_CHANNEL_SIZE);
+        let (device_event_sender, mut device_event_receiver) =
+            mpsc::channel::<(ConnectionId, DeviceEvent)>(EVENT_CHANNEL_SIZE);
+
+        let mut ping_timer = tokio::time::interval(Duration::from_secs(1));
 
         loop {
             tokio::select! {
@@ -101,10 +105,9 @@ impl DeviceManager {
                                 self._shutdown_watch.clone(),
                             );
 
-                            let message = ServerMessage::ServerInfo(ServerInfo::new("Test server"));
-                            connection_handle.send_down(message).await;
+                            let device_state = DeviceState::new(connection_handle, device_event_sender.clone().into()).await;
 
-                            connections.insert(id, connection_handle);
+                            connections.insert(id, device_state);
                         }
                         Err(e) => {
                             let e = TcpSupportError::AcceptError(e);
@@ -123,6 +126,11 @@ impl DeviceManager {
                         DeviceManagerEvent::RequestQuit => {
                             break;
                         }
+                        DeviceManagerEvent::RunDeviceConnectionPing => {
+                            for connection in connections.values_mut() {
+                                connection.send_ping_message().await;
+                            }
+                        }
                     }
                 }
                 event = connections_receiver.recv() => {
@@ -138,8 +146,19 @@ impl DeviceManager {
                             connections.remove(&id).unwrap().quit().await;
                         }
                         ConnectionEvent::Message(id, message) => {
-                            println!("Connection id {} message {:?}", id, message);
+                            connections.get_mut(&id).unwrap().handle_client_message(message).await;
                         }
+                    }
+                }
+                event = device_event_receiver.recv() => {
+                    let (id, event) = event.unwrap();
+                    match event {
+                        DeviceEvent::Test => (),
+                    }
+                }
+                _ = ping_timer.tick() => {
+                    for connection in connections.values_mut() {
+                        connection.send_ping_message().await;
                     }
                 }
             }

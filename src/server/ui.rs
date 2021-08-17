@@ -13,6 +13,7 @@ pub enum UiProtocolFromServerToUi {
 #[derive(Debug, Deserialize, Serialize)]
 pub enum UiProtocolFromUiToServer {
     NotificationTest,
+    RunDeviceConnectionPing,
 }
 
 enum QuitReason {

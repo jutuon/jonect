@@ -59,23 +59,19 @@ pub enum ServerMessage {
     Ping,
     /// Server should send this when client sends ClientMessage::Ping.
     PingResponse,
-    /// Client should close all connections to the server after receiving this.
-    QuitRequest,
     PlayAudioStream(AudioStreamInfo),
 }
 
 /// Message from client to server.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientMessage {
+    ClientInfo(ClientInfo),
     // Send ping request to server. Server should respond with
     // ServerMessage::PingResponse.
     Ping,
     // Client sends this message to server when it receives ServerMessage::Ping.
     PingResponse,
-    /// Server should close all connections to the client after receiving this.
-    QuitRequest,
     AudioStreamPlayError(String),
-    ClientInfo(ClientInfo),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -43,12 +43,19 @@ impl App {
             s.send(UiEvent::ButtonClicked("test")).expect(SEND_ERROR);
         });
 
+        let button_ping = Button::with_label("Ping");
+        let s = sender.clone();
+        button_ping.connect_clicked(move |_| {
+            s.send(UiEvent::ButtonClicked("ping")).expect(SEND_ERROR);
+        });
+
         let text = Label::new(Some("Multidevice"));
 
         let gtk_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
         gtk_box.set_margin_top(10);
         gtk_box.add(&text);
         gtk_box.add(&button);
+        gtk_box.add(&button_ping);
 
         window.add(&gtk_box);
         window.show_all();
@@ -87,6 +94,9 @@ impl App {
         match id {
             "test" => {
                 self.handle.send(UiProtocolFromUiToServer::NotificationTest);
+            }
+            "ping" => {
+                self.handle.send(UiProtocolFromUiToServer::RunDeviceConnectionPing);
             }
             _ => (),
         }

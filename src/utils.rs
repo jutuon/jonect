@@ -59,10 +59,10 @@ impl <T: fmt::Debug> From<mpsc::Sender<T>> for SendDownward<T> {
 
 /// Panic might happen if connection handle is dropped before the task
 /// is closed.
-pub struct ConnectionHandle<M: Debug> {
+pub struct ConnectionHandle<SendM: Debug> {
     id: ConnectionId,
     task_handle: JoinHandle<()>,
-    sender: SendDownward<M>,
+    sender: SendDownward<SendM>,
     quit_sender: oneshot::Sender<()>,
 }
 
