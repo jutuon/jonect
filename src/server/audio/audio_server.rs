@@ -5,12 +5,16 @@ use std::{
     any::Any,
     collections::VecDeque,
     time::{Duration, Instant},
+    io::{Write, ErrorKind},
 };
 
+use bytes::{BytesMut, BufMut, Buf};
 use gtk::glib::{MainContext, MainLoop, Sender};
 
 use pulse::{callbacks::ListResult, context::{introspect::SinkInfo, Context, FlagSet, State}, proplist::Proplist, sample::Spec, stream::Stream};
 use pulse_glib::Mainloop;
+
+use crate::server::device::data::TcpSendHandle;
 
 use super::{AudioEventSender};
 
@@ -19,14 +23,14 @@ use super::{AudioEventSender};
 pub enum FromAudioServerToServerEvent {
     // The first event from AudioServer.
     Init(EventToAudioServerSender),
-    //AudioServerClosed,
 }
 
 #[derive(Debug)]
 pub enum AudioServerEvent {
     Message(String),
     RequestQuit,
-    StartRecording { source_name: String },
+    StartRecording { source_name: Option<String>, send_handle: TcpSendHandle },
+    StopRecording,
     PAEvent(PAEvent),
     PAQuitReady,
 }
@@ -47,6 +51,7 @@ pub enum PAEvent {
 pub enum PARecordingStreamEvent {
     StateChange,
     Read(usize),
+    Moved,
 }
 
 #[derive(Debug)]
@@ -57,10 +62,13 @@ pub enum PAPlaybackStreamEvent {
 }
 
 pub struct PAStreamManager {
-    record: Option<Stream>,
+    record: Option<(Stream, TcpSendHandle)>,
     sender: EventToAudioServerSender,
     bytes_per_second: u64,
     data_count_time: Option<Instant>,
+    recording_buffer: BytesMut,
+    enable_recording: bool,
+    quit_requested: bool,
 }
 
 impl PAStreamManager {
@@ -70,10 +78,18 @@ impl PAStreamManager {
             sender,
             bytes_per_second: 0,
             data_count_time: None,
+            recording_buffer: BytesMut::new(),
+            enable_recording: true,
+            quit_requested: false,
         }
     }
 
-    fn request_start_record_stream(&mut self, context: &mut Context, source_name: String) {
+    fn request_start_record_stream(
+        &mut self,
+        context: &mut Context,
+        source_name: Option<String>,
+        send_handle: TcpSendHandle
+    ) {
         let spec = Spec {
             format: pulse::sample::Format::S16le,
             channels: 2,
@@ -91,8 +107,13 @@ impl PAStreamManager {
         .expect("Stream creation error");
 
         stream
-            .connect_record(Some(&source_name), None, pulse::stream::FlagSet::NOFLAGS)
+            .connect_record(source_name.as_deref(), None, pulse::stream::FlagSet::NOFLAGS)
             .unwrap();
+
+        let mut s = self.sender.clone();
+        stream.set_moved_callback(Some(Box::new(move || {
+            s.send_pa_record_stream_event(PARecordingStreamEvent::Moved);
+        })));
 
         let mut s = self.sender.clone();
         stream.set_state_callback(Some(Box::new(move || {
@@ -104,13 +125,16 @@ impl PAStreamManager {
             s.send_pa_record_stream_event(PARecordingStreamEvent::Read(size));
         })));
 
-        self.record = Some(stream);
+        self.recording_buffer.clear();
+        self.record = Some((stream, send_handle));
+        self.enable_recording = true;
     }
 
     fn handle_recording_stream_state_change(&mut self) {
         use pulse::stream::State;
 
-        let state = self.record.as_mut().unwrap().get_state();
+        let stream = &self.record.as_ref().unwrap().0;
+        let state = stream.get_state();
 
         match state {
             State::Failed => {
@@ -118,16 +142,68 @@ impl PAStreamManager {
             }
             State::Terminated => {
                 self.record = None;
-                self.data_count_time = None;
-                self.sender.send_pa(PAEvent::StreamManagerQuitReady);
+                if self.quit_requested {
+                    self.sender.send_pa(PAEvent::StreamManagerQuitReady);
+                }
                 eprintln!("Recording stream state: Terminated.");
+            }
+            State::Ready => {
+                println!("Recording from {:?}", stream.get_device_name());
             }
             _ => (),
         }
     }
 
+    fn handle_data(
+        data: &[u8],
+        recording_buffer: &mut BytesMut,
+        send_handle: &mut TcpSendHandle
+    ) -> Result<(), std::io::Error> {
+        loop {
+            if recording_buffer.has_remaining() {
+                match send_handle.write(recording_buffer.chunk()) {
+                    Ok(count) => {
+                        recording_buffer.advance(count);
+                    }
+                    Err(e) => {
+                        if ErrorKind::WouldBlock == e.kind() {
+                            break;
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        match send_handle.write(data) {
+            Ok(count) => {
+                if count < data.len() {
+                    let remaining_bytes = &data[count..];
+                    recording_buffer.extend_from_slice(remaining_bytes);
+                    println!("Recording state: buffering {} bytes.", remaining_bytes.len());
+                }
+            }
+            Err(e) => {
+                if ErrorKind::WouldBlock == e.kind() {
+                    recording_buffer.extend_from_slice(data);
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn handle_recording_stream_read(&mut self, read_size: usize) {
-        let r = self.record.as_mut().unwrap();
+        let (r, ref mut send_handle) = self.record.as_mut().unwrap();
+
+        if !self.enable_recording {
+            return;
+        }
 
         use pulse::stream::PeekResult;
 
@@ -138,22 +214,23 @@ impl PAStreamManager {
                     break;
                 }
                 PeekResult::Data(data) => {
-                    self.bytes_per_second += data.len() as u64;
+                    let result = Self::handle_data(
+                        data,
+                        &mut self.recording_buffer,
+                        send_handle,
+                    );
 
-                    match self.data_count_time {
-                        Some(data_count_time) => {
-                            let now = Instant::now();
-                            if now.duration_since(data_count_time) >= Duration::from_secs(1) {
-                                let speed = (self.bytes_per_second as f64) / 1024.0 / 1024.0;
-                                println!("Recording stream data speed: {} MiB/s", speed);
-                                self.bytes_per_second = 0;
-                                self.data_count_time = Some(Instant::now());
-                            }
-                        }
-                        None => {
-                            self.data_count_time = Some(Instant::now());
+                    match result {
+                        Ok(()) => (),
+                        Err(e) => {
+                            eprintln!("Audio write error: {}", e);
+                            r.discard().unwrap();
+                            self.enable_recording = false;
+                            self.stop_recording();
+                            return;
                         }
                     }
+
                 }
                 PeekResult::Hole(_) => (),
             }
@@ -170,11 +247,24 @@ impl PAStreamManager {
             PARecordingStreamEvent::Read(read_size) => {
                 self.handle_recording_stream_read(read_size);
             }
+            PARecordingStreamEvent::Moved => {
+                if let Some(name) = self.record.as_ref().map(|(s, _)| s.get_device_name()) {
+                    println!("Recording stream moved. Device name: {:?}", name);
+                }
+            }
+        }
+    }
+
+    fn stop_recording(&mut self) {
+        if let Some((stream, _)) = self.record.as_mut() {
+            stream.disconnect().unwrap();
         }
     }
 
     fn request_quit(&mut self) {
-        if let Some(stream) = self.record.as_mut() {
+        self.quit_requested = true;
+
+        if let Some((stream, _)) = self.record.as_mut() {
             stream.disconnect().unwrap();
         } else {
             self.sender.send_pa(PAEvent::StreamManagerQuitReady);
@@ -301,14 +391,18 @@ impl PAState {
         }
     }
 
-    fn start_recording(&mut self, source_name: String) {
+    fn start_recording(&mut self, source_name: Option<String>, send_handle: TcpSendHandle) {
         if self.context_ready {
             self.stream_manager
-                .request_start_record_stream(&mut self.context, source_name);
+                .request_start_record_stream(&mut self.context, source_name, send_handle);
         } else {
             self.wait_context_event_queue
-                .push_back(AudioServerEvent::StartRecording { source_name });
+                .push_back(AudioServerEvent::StartRecording { source_name, send_handle });
         }
+    }
+
+    fn stop_recording(&mut self) {
+        self.stream_manager.stop_recording();
     }
 
     fn request_quit(&mut self) {
@@ -359,8 +453,11 @@ impl AudioServer {
                 AudioServerEvent::RequestQuit => {
                     pa_state.request_quit();
                 }
-                AudioServerEvent::StartRecording { source_name } => {
-                    pa_state.start_recording(source_name);
+                AudioServerEvent::StartRecording { source_name, send_handle } => {
+                    pa_state.start_recording(source_name, send_handle);
+                }
+                AudioServerEvent::StopRecording => {
+                    pa_state.stop_recording();
                 }
                 AudioServerEvent::Message(_) => (),
                 AudioServerEvent::PAEvent(event) => {

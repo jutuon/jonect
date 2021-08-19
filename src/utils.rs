@@ -6,8 +6,14 @@ use std::{convert::TryInto, fmt::{self, Debug}, io::{ErrorKind}};
 
 use crate::config::EVENT_CHANNEL_SIZE;
 
-/// Drop this type after component is closed.
+/// Drop this type with some component.
 pub type ShutdownWatch = mpsc::Sender<()>;
+
+/// Handle for indicating running device data stream connections.
+///
+/// Drop this type with some connection.
+pub type ConnectionShutdownWatch = mpsc::Sender<()>;
+
 pub type QuitSender = oneshot::Sender<()>;
 pub type QuitReceiver = oneshot::Receiver<()>;
 
@@ -24,6 +30,10 @@ impl <T: fmt::Debug> SendUpward<T> {
     /// Panic if channel is broken.
     pub async fn send_up(&self, data: T) {
         self.sender.send(data).await.expect("Error: broken channel");
+    }
+
+    pub fn clone(&self) -> Self {
+        self.sender.clone().into()
     }
 }
 

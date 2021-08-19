@@ -65,6 +65,12 @@ impl AsyncServer {
                         FromDeviceManagerToServerEvent::TcpSupportDisabledBecauseOfError(error) => {
                             eprintln!("TCP support disabled {:?}", error);
                         }
+                        FromDeviceManagerToServerEvent::DataConnection(handle) => {
+                            at_sender.send(AudioServerEvent::StartRecording {
+                                source_name: self.config.pa_source_name.clone(),
+                                send_handle: handle,
+                            });
+                        }
                     }
                 }
                 Some(ui_event) = server_receiver.recv() => {
@@ -88,7 +94,6 @@ impl AsyncServer {
                             eprintln!("Failed to listen CTRL+C. Error: {}", e);
                         }
                     }
-
                 }
             }
         }
@@ -100,75 +105,6 @@ impl AsyncServer {
         dm_task_handle.await.unwrap();
         ui_task_handle.await.unwrap();
 
-
-        //let state = AudioServerStateWaitingEventSender::new(audio_thread);
-        //let mut audio_server_state = AudioServerState::new(state);
-
-/*
-
-
-
-        let (dm_sender, dm_receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
-        let dm = DeviceManager::new(dm_receiver, dm_sender.clone());
-        let mut dm_state = DMState::new(dm, dm_sender);
-
-        let mut quit_requested = false;
-
-        loop {
-            let event = self.receiver
-                .next()
-                .await
-                .expect("Logic bug: self.receiver channel closed.");
-
-            match event {
-                FromUiToServerEvent::AudioEvent(e) => {
-                    audio_server_state = audio_server_state.handle_event(e, &mut self.server_event_sender);
-                }
-                FromUiToServerEvent::DMEvent(e) => {
-                    dm_state.handle_dm_event(e, &mut self.server_event_sender).await;
-                }
-                FromUiToServerEvent::DMStateChange => {
-                    if dm_state.closed() && quit_requested {
-                        self.server_event_sender.send(FromUiToServerEvent::QuitProgressCheck);
-                    }
-                }
-                FromUiToServerEvent::AudioServerStateChange => {
-                    match audio_server_state {
-                        AudioServerState::WaitingEventSender {..} => (),
-                        AudioServerState::Running(ref mut state) => {
-                            if let Some(source_name) = self.config.pa_source_name.clone() {
-                                state.send_event(AudioServerEvent::StartRecording { source_name })
-                            }
-
-                            self.sender.send(Event::InitEnd);
-                        }
-                        AudioServerState::Closed => {
-                            if quit_requested {
-                                self.server_event_sender.send(FromUiToServerEvent::QuitProgressCheck);
-                            }
-                        }
-                    }
-                }
-                FromUiToServerEvent::RequestQuit => {
-                    quit_requested = true;
-                    audio_server_state.request_quit();
-                    dm_state.request_quit();
-                    // Send quit progress check event to handle case when all
-                    // components are already closed.
-                    self.server_event_sender.send(FromUiToServerEvent::QuitProgressCheck);
-                }
-                FromUiToServerEvent::QuitProgressCheck => {
-                    if audio_server_state.closed() && dm_state.closed() {
-                        break;
-                    }
-                }
-                FromUiToServerEvent::SendMessage => {
-                    self.sender.send(Event::Message("Test message".to_string()));
-                }
-            }
-        }
-
-        */
     }
 
 

@@ -47,7 +47,16 @@ pub enum AudioFormat {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AudioStreamInfo {
     format: AudioFormat,
-    port: u16,
+    pub port: u16,
+}
+
+impl AudioStreamInfo {
+    pub fn new(format: AudioFormat, port: u16) -> Self {
+        Self {
+            format,
+            port,
+        }
+    }
 }
 
 /// Message from server to client.

@@ -1,5 +1,6 @@
 pub mod protocol;
 pub mod state;
+pub mod data;
 
 use bytes::BytesMut;
 use serde::Serialize;
@@ -7,15 +8,16 @@ use tokio::{io::{AsyncReadExt, AsyncWrite, AsyncWriteExt}, net::{TcpListener, Tc
 
 use std::{collections::HashMap, convert::TryInto, fmt::{self, Debug}, io::{self, ErrorKind}, pin, time::Duration};
 
-use crate::utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward, ShutdownWatch};
+use crate::{server::device::data::DataConnectionEvent, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward, ShutdownWatch}};
 
-use self::{protocol::{ClientMessage, ServerInfo, ServerMessage}, state::{DeviceEvent, DeviceState}};
+use self::{data::{DataConnectionHandle, TcpSendHandle}, protocol::{ClientMessage, ServerInfo, ServerMessage}, state::{DeviceEvent, DeviceState}};
 
 use crate::config::{EVENT_CHANNEL_SIZE};
 
 #[derive(Debug)]
 pub enum FromDeviceManagerToServerEvent {
     TcpSupportDisabledBecauseOfError(TcpSupportError),
+    DataConnection(TcpSendHandle),
 }
 
 
@@ -86,7 +88,7 @@ impl DeviceManager {
             tokio::select! {
                 result = listener.accept(), if tcp_listener_enabled => {
                     match result {
-                        Ok((stream, _)) => {
+                        Ok((stream, address)) => {
                             let id = self.next_connection_id;
                             self.next_connection_id = match id.checked_add(1) {
                                 Some(new_next_id) => new_next_id,
@@ -105,7 +107,12 @@ impl DeviceManager {
                                 self._shutdown_watch.clone(),
                             );
 
-                            let device_state = DeviceState::new(connection_handle, device_event_sender.clone().into()).await;
+                            let device_state = DeviceState::new(
+                                connection_handle,
+                                device_event_sender.clone().into(),
+                                address,
+                                self._shutdown_watch.clone(),
+                            ).await;
 
                             connections.insert(id, device_state);
                         }
@@ -154,6 +161,13 @@ impl DeviceManager {
                     let (id, event) = event.unwrap();
                     match event {
                         DeviceEvent::Test => (),
+                        DeviceEvent::DataConnection(DataConnectionEvent::NewConnection(handle)) => {
+                            let e = FromDeviceManagerToServerEvent::DataConnection(handle);
+                            self.server_sender.send(e).await.unwrap();
+                        }
+                        DeviceEvent::DataConnection(event) => {
+                            connections.get_mut(&id).unwrap().handle_data_connection_message(event).await;
+                        }
                     }
                 }
                 _ = ping_timer.tick() => {
