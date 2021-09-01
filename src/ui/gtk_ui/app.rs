@@ -32,7 +32,7 @@ pub struct App {
 impl App {
     pub fn new(sender: Sender<UiEvent>, handle: ServerConnectionHandle) -> Self {
         let window = Window::new(gtk::WindowType::Toplevel);
-        window.set_title("Multidevice");
+        window.set_title("Jonect");
         window.set_default_size(640, 480);
 
         let s = sender.clone();
@@ -53,7 +53,7 @@ impl App {
             s.send(UiEvent::ButtonClicked("ping")).expect(SEND_ERROR);
         });
 
-        let text = Label::new(Some("Multidevice"));
+        let text = Label::new(Some("Jonect"));
 
         let gtk_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
         gtk_box.set_margin_top(10);

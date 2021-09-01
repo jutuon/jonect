@@ -1,8 +1,8 @@
-# Architecture of the MultiDevice Android Application
+# Architecture of the Jonect Android Application
 
 ## Application Description and Mission
 
-MultiDevice is an all-in-one smartphone application and computer server software
+Jonect is an all-in-one smartphone application and computer server software
 solution which allows your phone to operate as computer speaker,
 microphone, webcam or something else which can be implemented just using
 your smartphone.
@@ -12,7 +12,7 @@ But why to design and develop this kind of software?
 * Environmental impact. Smartphones don't get as software updates as long as
 normal computers. Old smartphones with old software with security
 vulnerabilities can be repurposed as computer peripherals.
-Also, MultiDevice will reduce the need to buy some computer peripherals.
+Also, Jonect will reduce the need to buy some computer peripherals.
 * Convenience. If you already own a smartphone, but not a computer
 microphone why you should have to buy a specific device for that as your
 phone includes a microphone?
@@ -40,7 +40,7 @@ data capturing harder.
 
 ## Prototype Architecture
 
-MultiDevice uses layers to implement all possible data transfer options.
+Jonect uses layers to implement all possible data transfer options.
 Android platform restricts application and computer communication possibilities
 to TCP and UDP sockets. The prototype will use TCP to simplify the development
 effort.

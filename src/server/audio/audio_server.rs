@@ -104,7 +104,7 @@ impl PAStreamManager {
 
         let mut stream = Stream::new(
             context,
-            "Multidevice recording stream",
+            "Jonect recording stream",
             &spec,
             None,
         )
@@ -292,7 +292,7 @@ impl PAState {
 
         let mut proplist = Proplist::new().unwrap();
 
-        let mut context = Context::new_with_proplist(&main_loop, "Multidevice", &proplist).unwrap();
+        let mut context = Context::new_with_proplist(&main_loop, "Jonect", &proplist).unwrap();
 
         let mut s = sender.clone();
         context.set_state_callback(Some(Box::new(move || {

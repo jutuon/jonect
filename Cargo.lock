@@ -461,6 +461,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd25036021b0de88a0aff6b850051563c6516d0bf53f8638938edbb9de732736"
 
 [[package]]
+name = "jonect"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "bytes",
+ "clap",
+ "gtk",
+ "libpulse-binding",
+ "libpulse-glib-binding",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "toml",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -569,24 +587,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9f1c5b025cda876f66ef43a113f91ebc9f4ccef34843000e0adf6ebbab84e21"
 dependencies = [
  "winapi",
-]
-
-[[package]]
-name = "multidevice-server"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "bytes",
- "clap",
- "gtk",
- "libpulse-binding",
- "libpulse-glib-binding",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "toml",
 ]
 
 [[package]]

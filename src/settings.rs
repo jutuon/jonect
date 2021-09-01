@@ -9,7 +9,7 @@ use std::{
     path::Path,
 };
 
-const SETTINGS_FILE_NAME: &str = "multidevice_settings.toml";
+const SETTINGS_FILE_NAME: &str = "jonect_settings.toml";
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Settings {

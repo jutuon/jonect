@@ -27,8 +27,8 @@ pub struct GtkUi;
 
 impl Ui for GtkUi {
     fn run(config: Config, settings: SettingsManager) {
-        gtk::glib::set_program_name("Multidevice".into());
-        gtk::glib::set_application_name("Multidevice");
+        gtk::glib::set_program_name("Jonect".into());
+        gtk::glib::set_application_name("Jonect");
 
         // Without setting the global context to thread default context
         // the receiver.attatch() will panic.

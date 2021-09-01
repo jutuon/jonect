@@ -24,7 +24,7 @@ pub struct Config {
 
 /// Parse command line args. Program may exit when running this.
 pub fn parse_cmd_args() -> Config {
-    let matches = App::new("Multidevice Server")
+    let matches = App::new("Jonect")
         .arg(
             Arg::with_name("test")
                 .short("t")
@@ -41,7 +41,7 @@ pub fn parse_cmd_args() -> Config {
         .subcommand(SubCommand::with_name("client")
             .about("Run the program in command line test client mode.")
             .arg(Arg::with_name("server-address")
-                .help("Multidevice server address and port number. Example: 'localhost:8080'")
+                .help("Jonect server address and port number. Example: 'localhost:8080'")
                 .short("a")
                 .long("server-address")
                 .required(true)

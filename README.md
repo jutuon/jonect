@@ -1,4 +1,4 @@
-# multidevice-server
+# Jonect
 
 
 ## Building and running on Ubuntu 20.04
