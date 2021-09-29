@@ -33,31 +33,34 @@ impl ServerInfo {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum PcmFormat {
-    // 16-bit little endian samples.
-    S16le,
+
+pub enum AudioFormat {
+    // 16-bit little endian PCM samples.
+    Pcm,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum AudioFormat {
-    Pcm {
-        format: PcmFormat,
-        channels: u8,
-        rate: u32,
+impl AudioFormat {
+    pub fn as_json_value(&self) -> &'static str {
+        "pcm-s16le"
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AudioStreamInfo {
-    format: AudioFormat,
+    /// Possible values:
+    /// * pcm-s16le - 16-bit little endian PCM samples.
+    format: String,
+    channels: u8,
+    rate: u32,
     pub port: u16,
 }
 
 impl AudioStreamInfo {
-    pub fn new(format: AudioFormat, port: u16) -> Self {
+    pub fn new(format: AudioFormat, channels: u8, rate: u32, port: u16) -> Self {
         Self {
-            format,
+            format: format.as_json_value().to_string(),
+            channels,
+            rate,
             port,
         }
     }
@@ -65,6 +68,7 @@ impl AudioStreamInfo {
 
 /// Message from server to client.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum ServerMessage {
     ServerInfo(ServerInfo),
     /// Client should respond with ClientMessage::PingResponse
@@ -77,6 +81,7 @@ pub enum ServerMessage {
 
 /// Message from client to server.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum ClientMessage {
     ClientInfo(ClientInfo),
     // Send ping request to server. Server should respond with

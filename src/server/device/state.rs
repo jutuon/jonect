@@ -90,12 +90,7 @@ impl DeviceState {
                 panic!("DataConnectionEvent::NewConnection should be handled before this method.");
             }
             DataConnectionEvent::PortNumber(tcp_port) => {
-                let format = AudioFormat::Pcm {
-                    format: super::protocol::PcmFormat::S16le,
-                    channels: 2,
-                    rate: 44100
-                };
-                let info = AudioStreamInfo::new(format, tcp_port);
+                let info = AudioStreamInfo::new(AudioFormat::Pcm, 2u8, 44100u32, tcp_port);
 
                 self.connection_handle.send_down(ServerMessage::PlayAudioStream(info)).await;
             }
