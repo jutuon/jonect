@@ -146,7 +146,7 @@ impl DataConnection {
 
 
     pub async fn run(mut self) {
-        let audio_out = match TcpListener::bind("127.0.0.1:0").await {
+        let audio_out = match TcpListener::bind("127.0.0.1:8082").await {
             Ok(listener) => listener,
             Err(e) => {
                 let e = DataConnectionEvent::TcpListenerBindError(e);
