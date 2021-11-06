@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use tokio::{net::{TcpListener, TcpStream}, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use crate::{config::EVENT_CHANNEL_SIZE, utils::{Connection, ConnectionEvent, QuitReceiver, QuitSender, SendDownward, SendUpward, ShutdownWatch}};
+use crate::{config::{self, EVENT_CHANNEL_SIZE}, utils::{Connection, ConnectionEvent, QuitReceiver, QuitSender, SendDownward, SendUpward, ShutdownWatch}};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum UiProtocolFromServerToUi {
@@ -62,7 +62,7 @@ impl UiConnectionManager {
     }
 
     async fn run(mut self) {
-        let listener = match TcpListener::bind("127.0.0.1:8081").await {
+        let listener = match TcpListener::bind(config::UI_SOCKET_ADDRESS).await {
             Ok(listener) => listener,
             Err(e) => {
                 eprintln!("UI connection disabled. Error: {:?}", e);

@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 
 use tokio::{net::TcpListener, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use crate::{config::EVENT_CHANNEL_SIZE, utils::{ConnectionId, ConnectionShutdownWatch, SendDownward, SendUpward, ShutdownWatch}};
+use crate::{config::{self, EVENT_CHANNEL_SIZE}, utils::{ConnectionId, ConnectionShutdownWatch, SendDownward, SendUpward, ShutdownWatch}};
 
 use super::{DeviceId, state::DeviceEvent};
 
@@ -146,7 +146,7 @@ impl DataConnection {
 
 
     pub async fn run(mut self) {
-        let audio_out = match TcpListener::bind("127.0.0.1:8082").await {
+        let audio_out = match TcpListener::bind(config::AUDIO_DATA_SOCKET_ADDRESS).await {
             Ok(listener) => listener,
             Err(e) => {
                 let e = DataConnectionEvent::TcpListenerBindError(e);

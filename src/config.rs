@@ -8,6 +8,9 @@ use clap::{App, Arg, SubCommand};
 
 pub const EVENT_CHANNEL_SIZE: usize = 32;
 
+pub const DEVICE_SOCKET_ADDRESS: &str = "0.0.0.0:8080";
+pub const AUDIO_DATA_SOCKET_ADDRESS: &str = "0.0.0.0:8082";
+pub const UI_SOCKET_ADDRESS: &str = "127.0.0.1:8081";
 
 #[derive(Debug, Clone)]
 pub struct TestClientConfig {

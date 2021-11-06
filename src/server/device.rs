@@ -12,7 +12,7 @@ use tokio::{io::{AsyncReadExt, AsyncWrite, AsyncWriteExt}, net::{TcpListener, Tc
 
 use std::{collections::HashMap, convert::TryInto, fmt::{self, Debug}, io::{self, ErrorKind}, pin, time::Duration};
 
-use crate::{server::device::data::DataConnectionEvent, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward, ShutdownWatch}};
+use crate::{config, server::device::data::DataConnectionEvent, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward, ShutdownWatch}};
 
 use self::{data::{DataConnectionHandle, TcpSendHandle}, protocol::{ClientMessage, ServerInfo, ServerMessage}, state::{DeviceEvent, DeviceState}};
 
@@ -67,7 +67,7 @@ impl DeviceManager {
 
     pub async fn run(mut self) {
 
-        let listener = match TcpListener::bind("127.0.0.1:8080").await {
+        let listener = match TcpListener::bind(config::DEVICE_SOCKET_ADDRESS).await {
             Ok(listener) => listener,
             Err(e) => {
                 let e = TcpSupportError::ListenerCreationError(e);
