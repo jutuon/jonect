@@ -17,23 +17,17 @@ use gtk::glib::{MainContext, MainLoop, Sender};
 
 use pulse::{callbacks::ListResult, context::{introspect::SinkInfo, Context, FlagSet, State}, proplist::Proplist, sample::Spec, stream::Stream};
 use pulse_glib::Mainloop;
+use tokio::sync::{mpsc, oneshot};
 
-use crate::server::device::data::TcpSendHandle;
+use crate::{config::Config, server::{device::data::TcpSendHandle, message_router::{RouterEvent, RouterSender}}};
 
-use super::{AudioEventSender};
-
-
-#[derive(Debug)]
-pub enum FromAudioServerToServerEvent {
-    // The first event from AudioServer.
-    Init(EventToAudioServerSender),
-}
 
 #[derive(Debug)]
 pub enum AudioServerEvent {
+    RouterConnectionOk,
     Message(String),
     RequestQuit,
-    StartRecording { source_name: Option<String>, send_handle: TcpSendHandle },
+    StartRecording { send_handle: TcpSendHandle },
     StopRecording,
     PAEvent(PAEvent),
     PAQuitReady,
@@ -401,7 +395,7 @@ impl PAState {
                 .request_start_record_stream(&mut self.context, source_name, send_handle);
         } else {
             self.wait_context_event_queue
-                .push_back(AudioServerEvent::StartRecording { source_name, send_handle });
+                .push_back(AudioServerEvent::StartRecording { send_handle });
         }
     }
 
@@ -419,20 +413,24 @@ impl PAState {
 /// Create a new thread for running an AudioServer. The reason for this is that
 /// AudioServer will modify glib thread default MainContext.
 pub struct AudioServer {
-    server_event_sender: AudioEventSender,
+    server_event_sender: RouterSender,
+    init_ok_sender: mpsc::Sender<()>,
+    config: std::sync::Arc<Config>,
 }
 
 impl AudioServer {
-    pub fn new(server_event_sender: AudioEventSender) -> Self {
+    pub fn new(server_event_sender: RouterSender, init_ok_sender: mpsc::Sender<()>, config: std::sync::Arc<Config>) -> Self {
         Self {
             server_event_sender,
+            init_ok_sender,
+            config,
         }
     }
 
     /// Run audio server code. This method will block until the server is closed.
     ///
     /// This function will modify glib thread default MainContext.
-    pub fn run(&mut self) {
+    pub fn run(mut self) {
 
         // Create context for this thread
         let mut context = MainContext::new();
@@ -442,8 +440,7 @@ impl AudioServer {
         let sender = EventToAudioServerSender::new(sender);
 
         // Send init event.
-        let init_event = FromAudioServerToServerEvent::Init(sender.clone());
-        self.server_event_sender.blocking_send(init_event).unwrap();
+        self.server_event_sender.send_router_blocking(RouterEvent::ConnectAudioServer(sender.clone()));
 
         // Init PulseAudio context.
         let mut pa_state = PAState::new(&mut context, sender);
@@ -451,14 +448,18 @@ impl AudioServer {
         // Init glib mainloop.
         let glib_main_loop = MainLoop::new(Some(&context), false);
 
+        let init_ok_sender = self.init_ok_sender.clone();
         let glib_main_loop_clone = glib_main_loop.clone();
         receiver.attach(Some(&context), move |event| {
             match event {
+                AudioServerEvent::RouterConnectionOk => {
+                    init_ok_sender.blocking_send(()).unwrap();
+                }
                 AudioServerEvent::RequestQuit => {
                     pa_state.request_quit();
                 }
-                AudioServerEvent::StartRecording { source_name, send_handle } => {
-                    pa_state.start_recording(source_name, send_handle);
+                AudioServerEvent::StartRecording { send_handle } => {
+                    pa_state.start_recording(self.config.pa_source_name.clone(), send_handle);
                 }
                 AudioServerEvent::StopRecording => {
                     pa_state.stop_recording();

@@ -12,11 +12,13 @@ use tokio::{io::{AsyncReadExt, AsyncWrite, AsyncWriteExt}, net::{TcpListener, Tc
 
 use std::{collections::HashMap, convert::TryInto, fmt::{self, Debug}, io::{self, ErrorKind}, pin, time::Duration};
 
-use crate::{config, server::device::data::DataConnectionEvent, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward, ShutdownWatch}};
+use crate::{config, server::{audio::AudioServerEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward, ShutdownWatch}};
 
 use self::{data::{DataConnectionHandle, TcpSendHandle}, protocol::{ClientMessage, ServerInfo, ServerMessage}, state::{DeviceEvent, DeviceState}};
 
 use crate::config::{EVENT_CHANNEL_SIZE};
+
+use super::{message_router::{MessageReceiver, RouterSender}, ui::UiEvent};
 
 #[derive(Debug)]
 pub enum FromDeviceManagerToServerEvent {
@@ -41,8 +43,8 @@ pub enum DeviceManagerEvent {
 type DeviceId = String;
 
 pub struct DeviceManager {
-    server_sender: mpsc::Sender<FromDeviceManagerToServerEvent>,
-    receiver: mpsc::Receiver<DeviceManagerEvent>,
+    r_sender: RouterSender,
+    receiver: MessageReceiver<DeviceManagerEvent>,
     next_connection_id: u64,
     _shutdown_watch: ShutdownWatch,
 }
@@ -50,19 +52,18 @@ pub struct DeviceManager {
 
 impl DeviceManager {
     pub fn new(
-        server_sender: mpsc::Sender<FromDeviceManagerToServerEvent>,
+        r_sender: RouterSender,
+        receiver: MessageReceiver<DeviceManagerEvent>,
         shutdown_watch: ShutdownWatch,
-    ) -> (Self, SendDownward<DeviceManagerEvent>) {
-        let (dm_event_sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
-
+    ) -> Self {
         let dm = Self {
-            server_sender,
+            r_sender,
             receiver,
             next_connection_id: 0,
             _shutdown_watch: shutdown_watch,
         };
 
-        (dm, dm_event_sender.into())
+        dm
     }
 
     pub async fn run(mut self) {
@@ -71,8 +72,8 @@ impl DeviceManager {
             Ok(listener) => listener,
             Err(e) => {
                 let e = TcpSupportError::ListenerCreationError(e);
-                let e = FromDeviceManagerToServerEvent::TcpSupportDisabledBecauseOfError(e);
-                self.server_sender.send(e).await.unwrap();
+                let e = UiEvent::TcpSupportDisabledBecauseOfError(e);
+                self.r_sender.send_ui_event(e).await;
                 self.wait_quit_event().await;
                 return;
             }
@@ -122,15 +123,15 @@ impl DeviceManager {
                         }
                         Err(e) => {
                             let e = TcpSupportError::AcceptError(e);
-                            let e = FromDeviceManagerToServerEvent::TcpSupportDisabledBecauseOfError(e);
-                            self.server_sender.send(e).await.unwrap();
+                            let e = UiEvent::TcpSupportDisabledBecauseOfError(e);
+                            self.r_sender.send_ui_event(e).await;
 
                             tcp_listener_enabled = false;
                         }
                     }
                 }
                 event = self.receiver.recv() => {
-                    match event.unwrap() {
+                    match event {
                         DeviceManagerEvent::Message(_) => {
 
                         }
@@ -166,8 +167,9 @@ impl DeviceManager {
                     match event {
                         DeviceEvent::Test => (),
                         DeviceEvent::DataConnection(DataConnectionEvent::NewConnection(handle)) => {
-                            let e = FromDeviceManagerToServerEvent::DataConnection(handle);
-                            self.server_sender.send(e).await.unwrap();
+                            self.r_sender.send_audio_server_event(AudioServerEvent::StartRecording {
+                                send_handle: handle,
+                            }).await;
                         }
                         DeviceEvent::DataConnection(event) => {
                             connections.get_mut(&id).unwrap().handle_data_connection_message(event).await;
@@ -192,7 +194,7 @@ impl DeviceManager {
 
     async fn wait_quit_event(&mut self) {
         loop {
-            let event = self.receiver.recv().await.unwrap();
+            let event = self.receiver.recv().await;
             if let DeviceManagerEvent::RequestQuit = event {
                 return;
             }
@@ -204,20 +206,14 @@ pub struct DeviceManagerTask;
 
 
 impl DeviceManagerTask {
-    pub fn task(shutdown_watch: ShutdownWatch) -> (
-        JoinHandle<()>,
-        SendDownward<DeviceManagerEvent>,
-        mpsc::Receiver<FromDeviceManagerToServerEvent>) {
-        let (sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
+    pub fn task(shutdown_watch: ShutdownWatch, r_sender: RouterSender, receiver: MessageReceiver<DeviceManagerEvent>) -> JoinHandle<()> {
 
-        let (dm, dm_sender) = DeviceManager::new(sender, shutdown_watch);
+        let dm = DeviceManager::new(r_sender, receiver, shutdown_watch);
 
         let task = async move {
             dm.run().await;
         };
 
-        let handle = tokio::spawn(task);
-
-        (handle, dm_sender, receiver)
+        tokio::spawn(task)
     }
 }

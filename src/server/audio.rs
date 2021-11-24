@@ -8,9 +8,10 @@ use std::{
 
 use self::audio_server::{AudioServer};
 
+use crate::config::Config;
 use crate::{config::EVENT_CHANNEL_SIZE, utils::ShutdownWatch};
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 mod audio_server;
 
@@ -156,46 +157,33 @@ impl AudioServerState {
 
  */
 
-pub use audio_server::{FromAudioServerToServerEvent, EventToAudioServerSender};
+pub use audio_server::{EventToAudioServerSender};
 pub use audio_server::AudioServerEvent;
 
-pub type AudioEventSender = mpsc::Sender<FromAudioServerToServerEvent>;
+use super::message_router::RouterSender;
+
+use std::sync::Arc;
 
 pub struct AudioThread {
     audio_thread: Option<JoinHandle<()>>,
-    receiver: mpsc::Receiver<FromAudioServerToServerEvent>,
-    init_ready: bool,
-    sender: Option<EventToAudioServerSender>,
 }
 
 impl AudioThread {
-    pub async fn start(shutdown_watch: ShutdownWatch) -> (Self, EventToAudioServerSender)  {
-        let (sender, mut receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
+    pub async fn start(shutdown_watch: ShutdownWatch, r_sender: RouterSender, config: Arc<Config>) -> Self  {
+        let (init_ok_sender, mut init_ok_receiver) = mpsc::channel(1);
 
         let audio_thread = Some(std::thread::spawn(move || {
-            AudioServer::new(sender).run();
+            AudioServer::new(r_sender, init_ok_sender, config).run();
             drop(shutdown_watch);
         }));
 
-        let ae_sender = if let FromAudioServerToServerEvent::Init(sender) = receiver.recv().await.unwrap() {
-            sender
-        } else {
-            panic!("The first event from AudioServer is not Init.");
-        };
+        init_ok_receiver.recv().await.unwrap();
 
         let thread = Self {
             audio_thread,
-            receiver,
-            init_ready: false,
-            sender: None,
         };
 
-        (thread, ae_sender)
-    }
-
-    // If None then the server is closed.
-    pub async fn next_event(&mut self) -> Option<FromAudioServerToServerEvent> {
-        self.receiver.recv().await
+        thread
     }
 
     pub fn join(&mut self) {
