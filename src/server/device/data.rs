@@ -6,12 +6,18 @@
 
 use std::net::SocketAddr;
 
-use tokio::{net::TcpListener, sync::{mpsc, oneshot}, task::JoinHandle};
+use tokio::{
+    net::TcpListener,
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 
-use crate::{config::{self, EVENT_CHANNEL_SIZE}, utils::{ConnectionId, ConnectionShutdownWatch, SendDownward, SendUpward}};
+use crate::{
+    config::{self, EVENT_CHANNEL_SIZE},
+    utils::{ConnectionId, ConnectionShutdownWatch, SendDownward, SendUpward},
+};
 
-use super::{state::DeviceEvent};
-
+use super::state::DeviceEvent;
 
 #[derive(Debug)]
 pub struct TcpSendHandle {
@@ -28,8 +34,6 @@ impl std::io::Write for TcpSendHandle {
         self.tcp_stream.flush()
     }
 }
-
-
 
 #[derive(Debug)]
 pub struct TcpSendConnection {
@@ -74,13 +78,10 @@ impl From<DataConnectionEvent> for DeviceEvent {
     }
 }
 
-
-
 #[derive(Debug)]
 pub enum DataConnectionEventFromDevice {
     Test,
 }
-
 
 pub struct DataConnectionHandle {
     command_connection_id: ConnectionId,
@@ -141,13 +142,14 @@ impl DataConnection {
         }
     }
 
-
     pub async fn run(mut self) {
         let audio_out = match TcpListener::bind(config::AUDIO_DATA_SOCKET_ADDRESS).await {
             Ok(listener) => listener,
             Err(e) => {
                 let e = DataConnectionEvent::TcpListenerBindError(e);
-                self.sender.send_up((self.command_connection_id, e.into())).await;
+                self.sender
+                    .send_up((self.command_connection_id, e.into()))
+                    .await;
                 self.quit_receiver.await.unwrap();
                 return;
             }
@@ -156,11 +158,15 @@ impl DataConnection {
         match audio_out.local_addr() {
             Ok(address) => {
                 let event = DataConnectionEvent::PortNumber(address.port());
-                self.sender.send_up((self.command_connection_id, event.into())).await;
+                self.sender
+                    .send_up((self.command_connection_id, event.into()))
+                    .await;
             }
             Err(e) => {
                 let e = DataConnectionEvent::GetPortNumberError(e);
-                self.sender.send_up((self.command_connection_id, e.into())).await;
+                self.sender
+                    .send_up((self.command_connection_id, e.into()))
+                    .await;
                 self.quit_receiver.await.unwrap();
                 return;
             }

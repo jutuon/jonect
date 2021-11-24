@@ -3,10 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use bytes::BytesMut;
-use serde::{Serialize, de::DeserializeOwned};
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, sync::{mpsc, oneshot}, task::JoinHandle};
+use serde::{de::DeserializeOwned, Serialize};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 
-use std::{convert::TryInto, fmt::{self, Debug}, io::{ErrorKind}};
+use std::{
+    convert::TryInto,
+    fmt::{self, Debug},
+    io::ErrorKind,
+};
 
 use crate::config::EVENT_CHANNEL_SIZE;
 
@@ -27,7 +35,7 @@ pub struct SendUpward<T: fmt::Debug> {
     sender: mpsc::Sender<T>,
 }
 
-impl <T: fmt::Debug> SendUpward<T> {
+impl<T: fmt::Debug> SendUpward<T> {
     /// Panic if channel is broken.
     pub async fn send_up(&self, data: T) {
         self.sender.send(data).await.expect("Error: broken channel");
@@ -38,11 +46,9 @@ impl <T: fmt::Debug> SendUpward<T> {
     }
 }
 
-impl <T: fmt::Debug> From<mpsc::Sender<T>> for SendUpward<T> {
+impl<T: fmt::Debug> From<mpsc::Sender<T>> for SendUpward<T> {
     fn from(sender: mpsc::Sender<T>) -> Self {
-        Self {
-            sender
-        }
+        Self { sender }
     }
 }
 
@@ -53,18 +59,16 @@ pub struct SendDownward<T: fmt::Debug> {
     sender: mpsc::Sender<T>,
 }
 
-impl <T: fmt::Debug> SendDownward<T> {
+impl<T: fmt::Debug> SendDownward<T> {
     /// Panic if channel is broken.
     pub async fn send_down(&self, data: T) {
         self.sender.send(data).await.expect("Error: broken channel");
     }
 }
 
-impl <T: fmt::Debug> From<mpsc::Sender<T>> for SendDownward<T> {
+impl<T: fmt::Debug> From<mpsc::Sender<T>> for SendDownward<T> {
     fn from(sender: mpsc::Sender<T>) -> Self {
-        Self {
-            sender
-        }
+        Self { sender }
     }
 }
 
@@ -77,7 +81,7 @@ pub struct ConnectionHandle<SendM: Debug> {
     quit_sender: oneshot::Sender<()>,
 }
 
-impl <M: Debug> ConnectionHandle<M> {
+impl<M: Debug> ConnectionHandle<M> {
     pub fn new(
         id: ConnectionId,
         task_handle: JoinHandle<()>,
@@ -113,11 +117,11 @@ pub enum ConnectionEvent<M> {
     Message(ConnectionId, M),
 }
 
-impl <M> ConnectionEvent<M> {
+impl<M> ConnectionEvent<M> {
     pub fn is_error(&self) -> bool {
         match self {
-            Self::ReadError(_,_) | Self::WriteError(_,_) => true,
-            Self::Message(_,_) => false,
+            Self::ReadError(_, _) | Self::WriteError(_, _) => true,
+            Self::Message(_, _) => false,
         }
     }
 }
@@ -137,13 +141,12 @@ pub enum WriteError {
     MessageSize(String),
 }
 
-
 #[derive(Debug)]
 pub struct Connection<
     R: AsyncReadExt + Unpin + Send + 'static,
     W: AsyncWriteExt + Unpin + Send + 'static,
     ReceiveM: DeserializeOwned + Debug + Send + 'static,
-    SendM: Serialize + Debug + Send + 'static
+    SendM: Serialize + Debug + Send + 'static,
 > {
     id: ConnectionId,
     read_half: R,
@@ -153,13 +156,13 @@ pub struct Connection<
     quit_receiver: oneshot::Receiver<()>,
 }
 
-impl <
-    R: AsyncReadExt + Unpin + Send + 'static,
-    W: AsyncWriteExt + Unpin + Send + 'static,
-    ReceiveM: DeserializeOwned + Debug + Send + 'static,
-    SendM: Serialize + Debug + Send + 'static,
-    > Connection<R, W, ReceiveM, SendM> {
-
+impl<
+        R: AsyncReadExt + Unpin + Send + 'static,
+        W: AsyncWriteExt + Unpin + Send + 'static,
+        ReceiveM: DeserializeOwned + Debug + Send + 'static,
+        SendM: Serialize + Debug + Send + 'static,
+    > Connection<R, W, ReceiveM, SendM>
+{
     pub fn spawn_connection_task(
         id: ConnectionId,
         read_half: R,
@@ -178,21 +181,12 @@ impl <
             write_half,
         };
 
-        let task_handle = tokio::spawn(async move {
-            connection.connection_task().await
-        });
+        let task_handle = tokio::spawn(async move { connection.connection_task().await });
 
-        ConnectionHandle::new(
-            id,
-            task_handle,
-            event_sender.into(),
-            quit_sender,
-        )
+        ConnectionHandle::new(id, task_handle, event_sender.into(), quit_sender)
     }
 
-    pub async fn connection_task(
-        mut self,
-    ) {
+    pub async fn connection_task(mut self) {
         let buffer = BytesMut::new();
         let r_task = Self::read_message(buffer, self.read_half);
         tokio::pin!(r_task);
@@ -271,23 +265,31 @@ impl <
             match read_half_with_limit.read_buf(&mut buffer).await {
                 Ok(0) => {
                     if buffer.len() == message_len as usize {
-                        let message = serde_json::from_slice(&buffer).map_err(ReadError::Deserialize);
+                        let message =
+                            serde_json::from_slice(&buffer).map_err(ReadError::Deserialize);
                         return (message, buffer, read_half_with_limit.into_inner());
                     } else {
                         let error = std::io::Error::new(ErrorKind::UnexpectedEof, "");
-                        return (Err(ReadError::Io(error)), buffer, read_half_with_limit.into_inner());
+                        return (
+                            Err(ReadError::Io(error)),
+                            buffer,
+                            read_half_with_limit.into_inner(),
+                        );
                     }
                 }
                 Ok(_) => (),
-                Err(e) => return (Err(ReadError::Io(e)), buffer, read_half_with_limit.into_inner()),
+                Err(e) => {
+                    return (
+                        Err(ReadError::Io(e)),
+                        buffer,
+                        read_half_with_limit.into_inner(),
+                    )
+                }
             }
         }
     }
 
-    async fn handle_writing(
-        mut receiver: mpsc::Receiver<SendM>,
-        mut write_half: W,
-    ) -> WriteError {
+    async fn handle_writing(mut receiver: mpsc::Receiver<SendM>, mut write_half: W) -> WriteError {
         loop {
             let message = receiver.recv().await.unwrap();
 

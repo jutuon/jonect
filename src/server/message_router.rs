@@ -4,7 +4,11 @@ use tokio::sync::mpsc;
 
 use crate::{config, utils};
 
-use super::{audio::{AudioServerEvent, EventToAudioServerSender}, device::DeviceManagerEvent, ui::UiEvent};
+use super::{
+    audio::{AudioServerEvent, EventToAudioServerSender},
+    device::DeviceManagerEvent,
+    ui::UiEvent,
+};
 
 #[derive(Debug)]
 pub enum RouterEvent {
@@ -37,11 +41,10 @@ impl Router {
     ) {
         let (r_sender, r_receiver) = mpsc::channel(config::EVENT_CHANNEL_SIZE);
 
-        let sender = RouterSender {
-            sender: r_sender,
-        };
+        let sender = RouterSender { sender: r_sender };
 
-        let (device_manager_sender, device_manager_receiver) = mpsc::channel(config::EVENT_CHANNEL_SIZE);
+        let (device_manager_sender, device_manager_receiver) =
+            mpsc::channel(config::EVENT_CHANNEL_SIZE);
         let (ui_sender, ui_receiver) = mpsc::channel(config::EVENT_CHANNEL_SIZE);
 
         let router = Self {
@@ -92,10 +95,8 @@ impl Router {
                 }
             }
         }
-
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct RouterSender {
@@ -108,15 +109,23 @@ impl RouterSender {
     }
 
     pub async fn send_audio_server_event(&mut self, event: AudioServerEvent) {
-        self.sender.send(RouterMessage::AudioServer(event)).await.unwrap()
+        self.sender
+            .send(RouterMessage::AudioServer(event))
+            .await
+            .unwrap()
     }
 
     pub async fn send_device_manager_event(&mut self, event: DeviceManagerEvent) {
-        self.sender.send(RouterMessage::DeviceManager(event)).await.unwrap()
+        self.sender
+            .send(RouterMessage::DeviceManager(event))
+            .await
+            .unwrap()
     }
 
     pub fn send_router_blocking(&mut self, event: RouterEvent) {
-        self.sender.blocking_send(RouterMessage::Router(event)).unwrap()
+        self.sender
+            .blocking_send(RouterMessage::Router(event))
+            .unwrap()
     }
 }
 
@@ -125,11 +134,9 @@ pub struct MessageReceiver<T> {
     receiver: mpsc::Receiver<T>,
 }
 
-impl <T> MessageReceiver<T> {
-    pub fn new(receiver: mpsc::Receiver<T>,) -> Self {
-        Self {
-            receiver
-        }
+impl<T> MessageReceiver<T> {
+    pub fn new(receiver: mpsc::Receiver<T>) -> Self {
+        Self { receiver }
     }
 
     pub async fn recv(&mut self) -> T {

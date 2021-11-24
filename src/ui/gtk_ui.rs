@@ -10,10 +10,10 @@ use self::logic::ServerConnectionHandle;
 
 use super::Ui;
 
-use crate::server::ui::{UiProtocolFromServerToUi};
+use crate::server::ui::UiProtocolFromServerToUi;
 use crate::{config::Config, settings::SettingsManager};
 
-use gtk::gio::{prelude::*};
+use gtk::gio::prelude::*;
 use gtk::glib::{MainContext, MainLoop, Sender};
 use gtk::{prelude::*, Label};
 

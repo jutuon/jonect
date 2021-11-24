@@ -2,20 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-pub mod device;
 pub mod audio;
-pub mod ui;
+pub mod device;
 pub mod message_router;
+pub mod ui;
 
-use self::device::{DeviceManagerEvent};
+use self::device::DeviceManagerEvent;
 
-use {
-    audio::{AudioThread, AudioServerEvent},
+use audio::{AudioServerEvent, AudioThread};
+
+use crate::{
+    config::Config,
+    server::{
+        device::DeviceManagerTask,
+        message_router::{Router, RouterSender},
+        ui::UiConnectionManager,
+    },
+    utils::QuitSender,
 };
 
-use crate::{config::Config, server::{device::{DeviceManagerTask}, message_router::{Router, RouterSender}, ui::{UiConnectionManager}}, utils::{QuitSender}};
-
-use tokio::{signal};
+use tokio::signal;
 
 use tokio::runtime::Runtime;
 
@@ -24,16 +30,13 @@ pub struct AsyncServer {
 }
 
 impl AsyncServer {
-    pub fn new(
-        config: Config,
-    ) -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             config: config.into(),
         }
     }
 
     pub async fn run(&mut self) {
-
         // Init message routing.
 
         let (router, mut r_sender, device_manager_receiver, ui_receiver) = Router::new();
@@ -45,14 +48,16 @@ impl AsyncServer {
 
         let mut at = AudioThread::start(r_sender.clone(), self.config.clone()).await;
         let dm_task_handle = DeviceManagerTask::task(r_sender.clone(), device_manager_receiver);
-        let (ui_task_handle, ui_quit_sender) = UiConnectionManager::task(r_sender.clone(), ui_receiver);
+        let (ui_task_handle, ui_quit_sender) =
+            UiConnectionManager::task(r_sender.clone(), ui_receiver);
 
-        async fn send_shutdown_request(
-            r_sender: &mut RouterSender,
-            ui_sender: QuitSender,
-        ) {
-            r_sender.send_audio_server_event(AudioServerEvent::RequestQuit).await;
-            r_sender.send_device_manager_event(DeviceManagerEvent::RequestQuit).await;
+        async fn send_shutdown_request(r_sender: &mut RouterSender, ui_sender: QuitSender) {
+            r_sender
+                .send_audio_server_event(AudioServerEvent::RequestQuit)
+                .await;
+            r_sender
+                .send_device_manager_event(DeviceManagerEvent::RequestQuit)
+                .await;
             ui_sender.send(()).unwrap();
         }
 
@@ -86,8 +91,6 @@ impl AsyncServer {
         r_quit_sender.send(()).unwrap();
         router_task_handle.await.unwrap();
     }
-
-
 }
 
 pub struct Server;

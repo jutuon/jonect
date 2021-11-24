@@ -16,7 +16,7 @@
 //!    the server and client because messages are processed as they
 //!    are received.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -32,7 +32,6 @@ impl ServerInfo {
         }
     }
 }
-
 
 pub enum AudioFormat {
     // 16-bit little endian PCM samples.

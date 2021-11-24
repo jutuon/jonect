@@ -63,9 +63,7 @@ pub fn parse_cmd_args() -> Config {
             .unwrap()
             .next()
             .unwrap();
-        TestClientConfig {
-            address,
-        }
+        TestClientConfig { address }
     });
 
     let gui = matches.subcommand_matches("gui").map(|_| ());

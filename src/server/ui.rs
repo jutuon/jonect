@@ -5,11 +5,22 @@
 //! User interface communication protocol.
 
 use serde::{Deserialize, Serialize};
-use tokio::{net::{TcpListener, TcpStream}, sync::{mpsc, oneshot}, task::JoinHandle};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 
-use crate::{config::{self, EVENT_CHANNEL_SIZE}, server::device::DeviceManagerEvent, utils::{Connection, ConnectionEvent, ConnectionHandle, QuitReceiver, QuitSender}};
+use crate::{
+    config::{self, EVENT_CHANNEL_SIZE},
+    server::device::DeviceManagerEvent,
+    utils::{Connection, ConnectionEvent, ConnectionHandle, QuitReceiver, QuitSender},
+};
 
-use super::{device::TcpSupportError, message_router::{MessageReceiver, RouterSender}};
+use super::{
+    device::TcpSupportError,
+    message_router::{MessageReceiver, RouterSender},
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum UiProtocolFromServerToUi {
@@ -39,15 +50,10 @@ pub struct UiConnectionManager {
 }
 
 impl UiConnectionManager {
-
     pub fn task(
         server_sender: RouterSender,
         ui_receiver: MessageReceiver<UiEvent>,
-    ) -> (
-        JoinHandle<()>,
-        QuitSender,
-    ) {
-
+    ) -> (JoinHandle<()>, QuitSender) {
         let (quit_sender, quit_receiver) = oneshot::channel();
 
         let cm = Self {
@@ -112,12 +118,8 @@ impl UiConnectionManager {
         let (sender, mut connections_receiver) =
             mpsc::channel::<ConnectionEvent<UiProtocolFromUiToServer>>(EVENT_CHANNEL_SIZE);
 
-        let connection_handle: ConnectionHandle<UiProtocolFromUiToServer> = Connection::spawn_connection_task(
-            0,
-            read_half,
-            write_half,
-            sender.into(),
-        );
+        let connection_handle: ConnectionHandle<UiProtocolFromUiToServer> =
+            Connection::spawn_connection_task(0, read_half, write_half, sender.into());
 
         tokio::pin!(ui_receiver);
 

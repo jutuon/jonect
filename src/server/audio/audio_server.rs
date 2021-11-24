@@ -4,22 +4,32 @@
 
 //! This code runs in a different thread.
 
-
 use std::{
     any::Any,
     collections::VecDeque,
-    io::{Write, ErrorKind},
+    io::{ErrorKind, Write},
 };
 
-use bytes::{BytesMut, Buf};
+use bytes::{Buf, BytesMut};
 use gtk::glib::{MainContext, MainLoop, Sender};
 
-use pulse::{callbacks::ListResult, context::{introspect::SinkInfo, Context, FlagSet, State}, proplist::Proplist, sample::Spec, stream::Stream};
+use pulse::{
+    callbacks::ListResult,
+    context::{introspect::SinkInfo, Context, FlagSet, State},
+    proplist::Proplist,
+    sample::Spec,
+    stream::Stream,
+};
 use pulse_glib::Mainloop;
-use tokio::sync::{mpsc};
+use tokio::sync::mpsc;
 
-use crate::{config::Config, server::{device::data::TcpSendHandle, message_router::{RouterEvent, RouterSender}}};
-
+use crate::{
+    config::Config,
+    server::{
+        device::data::TcpSendHandle,
+        message_router::{RouterEvent, RouterSender},
+    },
+};
 
 #[derive(Debug)]
 pub enum AudioServerEvent {
@@ -81,7 +91,7 @@ impl PAStreamManager {
         &mut self,
         context: &mut Context,
         source_name: Option<String>,
-        send_handle: TcpSendHandle
+        send_handle: TcpSendHandle,
     ) {
         let spec = Spec {
             format: pulse::sample::Format::S16le,
@@ -91,16 +101,15 @@ impl PAStreamManager {
 
         assert!(spec.is_valid(), "Stream data specification is invalid.");
 
-        let mut stream = Stream::new(
-            context,
-            "Jonect recording stream",
-            &spec,
-            None,
-        )
-        .expect("Stream creation error");
+        let mut stream = Stream::new(context, "Jonect recording stream", &spec, None)
+            .expect("Stream creation error");
 
         stream
-            .connect_record(source_name.as_deref(), None, pulse::stream::FlagSet::NOFLAGS)
+            .connect_record(
+                source_name.as_deref(),
+                None,
+                pulse::stream::FlagSet::NOFLAGS,
+            )
             .unwrap();
 
         let mut s = self.sender.clone();
@@ -150,7 +159,7 @@ impl PAStreamManager {
     fn handle_data(
         data: &[u8],
         recording_buffer: &mut BytesMut,
-        send_handle: &mut TcpSendHandle
+        send_handle: &mut TcpSendHandle,
     ) -> Result<(), std::io::Error> {
         loop {
             if recording_buffer.has_remaining() {
@@ -176,7 +185,10 @@ impl PAStreamManager {
                 if count < data.len() {
                     let remaining_bytes = &data[count..];
                     recording_buffer.extend_from_slice(remaining_bytes);
-                    println!("Recording state: buffering {} bytes.", remaining_bytes.len());
+                    println!(
+                        "Recording state: buffering {} bytes.",
+                        remaining_bytes.len()
+                    );
                 }
             }
             Err(e) => {
@@ -207,11 +219,7 @@ impl PAStreamManager {
                     break;
                 }
                 PeekResult::Data(data) => {
-                    let result = Self::handle_data(
-                        data,
-                        &mut self.recording_buffer,
-                        send_handle,
-                    );
+                    let result = Self::handle_data(data, &mut self.recording_buffer, send_handle);
 
                     match result {
                         Ok(()) => (),
@@ -223,7 +231,6 @@ impl PAStreamManager {
                             return;
                         }
                     }
-
                 }
                 PeekResult::Hole(_) => (),
             }
@@ -389,8 +396,11 @@ impl PAState {
 
     fn start_recording(&mut self, source_name: Option<String>, send_handle: TcpSendHandle) {
         if self.context_ready {
-            self.stream_manager
-                .request_start_record_stream(&mut self.context, source_name, send_handle);
+            self.stream_manager.request_start_record_stream(
+                &mut self.context,
+                source_name,
+                send_handle,
+            );
         } else {
             self.wait_context_event_queue
                 .push_back(AudioServerEvent::StartRecording { send_handle });
@@ -417,7 +427,11 @@ pub struct AudioServer {
 }
 
 impl AudioServer {
-    pub fn new(server_event_sender: RouterSender, init_ok_sender: mpsc::Sender<()>, config: std::sync::Arc<Config>) -> Self {
+    pub fn new(
+        server_event_sender: RouterSender,
+        init_ok_sender: mpsc::Sender<()>,
+        config: std::sync::Arc<Config>,
+    ) -> Self {
         Self {
             server_event_sender,
             init_ok_sender,
@@ -429,16 +443,17 @@ impl AudioServer {
     ///
     /// This function will modify glib thread default MainContext.
     pub fn run(mut self) {
-
         // Create context for this thread
         let mut context = MainContext::new();
         context.push_thread_default();
 
-        let (sender, receiver) = MainContext::channel::<AudioServerEvent>(gtk::glib::PRIORITY_DEFAULT);
+        let (sender, receiver) =
+            MainContext::channel::<AudioServerEvent>(gtk::glib::PRIORITY_DEFAULT);
         let sender = EventToAudioServerSender::new(sender);
 
         // Send init event.
-        self.server_event_sender.send_router_blocking(RouterEvent::ConnectAudioServer(sender.clone()));
+        self.server_event_sender
+            .send_router_blocking(RouterEvent::ConnectAudioServer(sender.clone()));
 
         // Init PulseAudio context.
         let mut pa_state = PAState::new(&mut context, sender);

@@ -6,8 +6,8 @@ use crate::server::ui::{UiProtocolFromServerToUi, UiProtocolFromUiToServer};
 
 use super::logic::ServerConnectionHandle;
 
-use gtk::gio::{prelude::*};
-use gtk::glib::{Sender};
+use gtk::gio::prelude::*;
+use gtk::glib::Sender;
 use gtk::{prelude::*, Button, Label, Window};
 
 use super::SEND_ERROR;
@@ -100,7 +100,8 @@ impl App {
                 self.handle.send(UiProtocolFromUiToServer::NotificationTest);
             }
             "ping" => {
-                self.handle.send(UiProtocolFromUiToServer::RunDeviceConnectionPing);
+                self.handle
+                    .send(UiProtocolFromUiToServer::RunDeviceConnectionPing);
             }
             _ => (),
         }

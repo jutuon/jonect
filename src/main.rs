@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+mod client;
 mod config;
+mod server;
 mod settings;
 mod ui;
-mod client;
-mod server;
 mod utils;
 
 use std::process;

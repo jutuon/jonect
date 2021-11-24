@@ -2,28 +2,43 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+pub mod data;
 pub mod protocol;
 pub mod state;
-pub mod data;
 
-use tokio::{net::{TcpListener}, sync::{mpsc}, task::JoinHandle};
+use tokio::{net::TcpListener, sync::mpsc, task::JoinHandle};
 
-use std::{collections::HashMap, fmt::{Debug}, io::{self}, time::Duration};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    io::{self},
+    time::Duration,
+};
 
-use crate::{config, server::{audio::AudioServerEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionId}};
+use crate::{
+    config,
+    server::{audio::AudioServerEvent, device::data::DataConnectionEvent},
+    utils::{Connection, ConnectionEvent, ConnectionId},
+};
 
-use self::{data::{TcpSendHandle}, protocol::{ClientMessage}, state::{DeviceEvent, DeviceState}};
+use self::{
+    data::TcpSendHandle,
+    protocol::ClientMessage,
+    state::{DeviceEvent, DeviceState},
+};
 
-use crate::config::{EVENT_CHANNEL_SIZE};
+use crate::config::EVENT_CHANNEL_SIZE;
 
-use super::{message_router::{MessageReceiver, RouterSender}, ui::UiEvent};
+use super::{
+    message_router::{MessageReceiver, RouterSender},
+    ui::UiEvent,
+};
 
 #[derive(Debug)]
 pub enum FromDeviceManagerToServerEvent {
     TcpSupportDisabledBecauseOfError(TcpSupportError),
     DataConnection(TcpSendHandle),
 }
-
 
 #[derive(Debug)]
 pub enum TcpSupportError {
@@ -46,12 +61,8 @@ pub struct DeviceManager {
     next_connection_id: u64,
 }
 
-
 impl DeviceManager {
-    pub fn new(
-        r_sender: RouterSender,
-        receiver: MessageReceiver<DeviceManagerEvent>,
-    ) -> Self {
+    pub fn new(r_sender: RouterSender, receiver: MessageReceiver<DeviceManagerEvent>) -> Self {
         Self {
             r_sender,
             receiver,
@@ -60,7 +71,6 @@ impl DeviceManager {
     }
 
     pub async fn run(mut self) {
-
         let listener = match TcpListener::bind(config::DEVICE_SOCKET_ADDRESS).await {
             Ok(listener) => listener,
             Err(e) => {
@@ -175,7 +185,6 @@ impl DeviceManager {
             }
         }
 
-
         // Quit
 
         for connection in connections.into_values() {
@@ -195,10 +204,11 @@ impl DeviceManager {
 
 pub struct DeviceManagerTask;
 
-
 impl DeviceManagerTask {
-    pub fn task(r_sender: RouterSender, receiver: MessageReceiver<DeviceManagerEvent>) -> JoinHandle<()> {
-
+    pub fn task(
+        r_sender: RouterSender,
+        receiver: MessageReceiver<DeviceManagerEvent>,
+    ) -> JoinHandle<()> {
         let dm = DeviceManager::new(r_sender, receiver);
 
         let task = async move {

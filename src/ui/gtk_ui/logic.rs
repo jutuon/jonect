@@ -2,14 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::{thread::{JoinHandle}, time::Duration};
 use super::FromServerToUiSender;
+use std::{thread::JoinHandle, time::Duration};
 
-use crate::{server::ui::{UiProtocolFromServerToUi, UiProtocolFromUiToServer}, utils::QuitReceiver};
+use crate::{
+    server::ui::{UiProtocolFromServerToUi, UiProtocolFromUiToServer},
+    utils::QuitReceiver,
+};
 
-use tokio::{net::TcpStream, runtime::Runtime, sync::{mpsc, oneshot}};
+use tokio::{
+    net::TcpStream,
+    runtime::Runtime,
+    sync::{mpsc, oneshot},
+};
 
-use crate::{config::{EVENT_CHANNEL_SIZE}, utils::{Connection, ConnectionEvent}};
+use crate::{
+    config::EVENT_CHANNEL_SIZE,
+    utils::{Connection, ConnectionEvent},
+};
 
 pub struct ServerConnectionHandle {
     logic_thread: Option<JoinHandle<()>>,
@@ -20,7 +30,8 @@ pub struct ServerConnectionHandle {
 impl ServerConnectionHandle {
     pub fn new(sender: FromServerToUiSender) -> Self {
         let (quit_sender, quit_receiver) = oneshot::channel();
-        let (server_event_sender, receiver) = mpsc::channel::<UiProtocolFromUiToServer>(EVENT_CHANNEL_SIZE);
+        let (server_event_sender, receiver) =
+            mpsc::channel::<UiProtocolFromUiToServer>(EVENT_CHANNEL_SIZE);
 
         let s = server_event_sender.clone();
         let logic_thread = Some(std::thread::spawn(move || {
@@ -41,8 +52,7 @@ impl ServerConnectionHandle {
     pub fn send(&mut self, message: UiProtocolFromUiToServer) {
         // TODO: Do not queue messages if there is no connection to the server?
         // TODO: Clear message queue when new connection is established?
-        self.server_event_sender
-            .blocking_send(message).unwrap();
+        self.server_event_sender.blocking_send(message).unwrap();
     }
 
     pub fn quit(&mut self) {
@@ -50,7 +60,6 @@ impl ServerConnectionHandle {
         self.logic_thread.take().unwrap().join().unwrap();
     }
 }
-
 
 enum QuitReason {
     QuitRequest,
@@ -96,8 +105,6 @@ impl ServerClient {
                 _ = tokio::time::sleep(Duration::from_secs(5)) => (),
             }
         }
-
-
     }
 
     pub async fn handle_connection(
@@ -111,12 +118,8 @@ impl ServerClient {
         let (sender, mut connections_receiver) =
             mpsc::channel::<ConnectionEvent<UiProtocolFromServerToUi>>(EVENT_CHANNEL_SIZE);
 
-        let connection_handle = Connection::spawn_connection_task(
-            0,
-            read_half,
-            write_half,
-            sender.into(),
-        );
+        let connection_handle =
+            Connection::spawn_connection_task(0, read_half, write_half, sender.into());
 
         let quit_reason = loop {
             tokio::select! {
@@ -159,5 +162,4 @@ impl ServerClient {
 
         quit_reason
     }
-
 }

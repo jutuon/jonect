@@ -4,25 +4,34 @@
 
 //! Test client
 
-use tokio::{io::{AsyncReadExt}, net::TcpStream, runtime::Runtime, signal, sync::{mpsc, oneshot}};
+use tokio::{
+    io::AsyncReadExt,
+    net::TcpStream,
+    runtime::Runtime,
+    signal,
+    sync::{mpsc, oneshot},
+};
 
-use crate::{config::{EVENT_CHANNEL_SIZE, TestClientConfig}, server::device::protocol::ServerMessage, utils::{Connection, ConnectionEvent}};
+use crate::{
+    config::{TestClientConfig, EVENT_CHANNEL_SIZE},
+    server::device::protocol::ServerMessage,
+    utils::{Connection, ConnectionEvent},
+};
 
-use crate::server::device::{protocol::{ClientInfo, ClientMessage}};
+use crate::server::device::protocol::{ClientInfo, ClientMessage};
 
-use std::{net::{SocketAddr, ToSocketAddrs}, time::{Duration, Instant}};
+use std::{
+    net::{SocketAddr, ToSocketAddrs},
+    time::{Duration, Instant},
+};
 
 pub struct TestClient {
     config: TestClientConfig,
 }
 
-
-
 impl TestClient {
     pub fn new(config: TestClientConfig) -> Self {
-        TestClient {
-            config
-        }
+        TestClient { config }
     }
 
     pub fn run(self) {
@@ -34,21 +43,23 @@ impl TestClient {
     }
 }
 
-
 struct AsyncClient {
     config: TestClientConfig,
 }
 
 impl AsyncClient {
     pub fn new(config: TestClientConfig) -> Self {
-        Self {
-            config,
-        }
+        Self { config }
     }
 
     pub async fn run(self) {
-
-        let address = self.config.address.to_socket_addrs().unwrap().next().unwrap();
+        let address = self
+            .config
+            .address
+            .to_socket_addrs()
+            .unwrap()
+            .next()
+            .unwrap();
 
         let stream = TcpStream::connect(address).await.unwrap();
         let (read_half, write_half) = stream.into_split();
@@ -56,18 +67,13 @@ impl AsyncClient {
         let (sender, mut connections_receiver) =
             mpsc::channel::<ConnectionEvent<ServerMessage>>(EVENT_CHANNEL_SIZE);
 
-        let connection_handle = Connection::spawn_connection_task(
-            0,
-            read_half,
-            write_half,
-            sender.into(),
-        );
+        let connection_handle =
+            Connection::spawn_connection_task(0, read_half, write_half, sender.into());
 
         let message = ClientMessage::ClientInfo(ClientInfo::new("test"));
         connection_handle.send_down(message).await;
 
         let mut ctrl_c_listener_enabled = true;
-
 
         let mut data_stream = None;
 

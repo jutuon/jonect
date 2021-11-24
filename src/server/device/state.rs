@@ -6,9 +6,10 @@ use std::{net::SocketAddr, time::Instant};
 
 use crate::utils::{ConnectionHandle, ConnectionId, SendUpward};
 
-use super::{data::{DataConnection, DataConnectionEvent, DataConnectionHandle}, protocol::{AudioFormat, AudioStreamInfo, ClientMessage, ServerInfo, ServerMessage}};
-
-
+use super::{
+    data::{DataConnection, DataConnectionEvent, DataConnectionHandle},
+    protocol::{AudioFormat, AudioStreamInfo, ClientMessage, ServerInfo, ServerMessage},
+};
 
 #[derive(Debug)]
 pub enum DeviceEvent {
@@ -24,7 +25,6 @@ pub struct DeviceState {
     ping_state: Option<Instant>,
     audio_out: Option<DataConnectionHandle>,
 }
-
 
 impl DeviceState {
     pub async fn new(
@@ -59,7 +59,9 @@ impl DeviceState {
                 self.audio_out = Some(handle);
             }
             ClientMessage::Ping => {
-                self.connection_handle.send_down(ServerMessage::PingResponse).await;
+                self.connection_handle
+                    .send_down(ServerMessage::PingResponse)
+                    .await;
             }
             ClientMessage::PingResponse => {
                 if let Some(time) = self.ping_state.take() {
@@ -88,12 +90,14 @@ impl DeviceState {
             DataConnectionEvent::PortNumber(tcp_port) => {
                 let info = AudioStreamInfo::new(AudioFormat::Pcm, 2u8, 44100u32, tcp_port);
 
-                self.connection_handle.send_down(ServerMessage::PlayAudioStream(info)).await;
+                self.connection_handle
+                    .send_down(ServerMessage::PlayAudioStream(info))
+                    .await;
             }
-            e @ DataConnectionEvent::TcpListenerBindError(_) |
-            e @ DataConnectionEvent::GetPortNumberError(_) |
-            e @ DataConnectionEvent::AcceptError(_) |
-            e @ DataConnectionEvent::SendConnectionError(_) => {
+            e @ DataConnectionEvent::TcpListenerBindError(_)
+            | e @ DataConnectionEvent::GetPortNumberError(_)
+            | e @ DataConnectionEvent::AcceptError(_)
+            | e @ DataConnectionEvent::SendConnectionError(_) => {
                 eprintln!("Error: {:?}", e);
             }
         }

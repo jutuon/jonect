@@ -4,26 +4,23 @@
 
 mod audio_server;
 
-use std::{
-    thread::JoinHandle,
-    sync::Arc,
-};
+use std::{sync::Arc, thread::JoinHandle};
 
-use tokio::sync::{mpsc};
+use tokio::sync::mpsc;
 
-use self::audio_server::{AudioServer};
-use crate::config::Config;
+use self::audio_server::AudioServer;
 use super::message_router::RouterSender;
+use crate::config::Config;
 
-pub use audio_server::{EventToAudioServerSender};
 pub use audio_server::AudioServerEvent;
+pub use audio_server::EventToAudioServerSender;
 
 pub struct AudioThread {
     audio_thread: Option<JoinHandle<()>>,
 }
 
 impl AudioThread {
-    pub async fn start(r_sender: RouterSender, config: Arc<Config>) -> Self  {
+    pub async fn start(r_sender: RouterSender, config: Arc<Config>) -> Self {
         let (init_ok_sender, mut init_ok_receiver) = mpsc::channel(1);
 
         let audio_thread = Some(std::thread::spawn(move || {
@@ -32,9 +29,7 @@ impl AudioThread {
 
         init_ok_receiver.recv().await.unwrap();
 
-        Self {
-            audio_thread,
-        }
+        Self { audio_thread }
     }
 
     pub fn join(&mut self) {
