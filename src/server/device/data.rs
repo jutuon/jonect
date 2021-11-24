@@ -10,7 +10,7 @@ use tokio::{net::TcpListener, sync::{mpsc, oneshot}, task::JoinHandle};
 
 use crate::{config::{self, EVENT_CHANNEL_SIZE}, utils::{ConnectionId, ConnectionShutdownWatch, SendDownward, SendUpward}};
 
-use super::{DeviceId, state::DeviceEvent};
+use super::{state::DeviceEvent};
 
 
 #[derive(Debug)]

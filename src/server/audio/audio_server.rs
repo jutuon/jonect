@@ -8,16 +8,15 @@
 use std::{
     any::Any,
     collections::VecDeque,
-    time::{Duration, Instant},
     io::{Write, ErrorKind},
 };
 
-use bytes::{BytesMut, BufMut, Buf};
+use bytes::{BytesMut, Buf};
 use gtk::glib::{MainContext, MainLoop, Sender};
 
 use pulse::{callbacks::ListResult, context::{introspect::SinkInfo, Context, FlagSet, State}, proplist::Proplist, sample::Spec, stream::Stream};
 use pulse_glib::Mainloop;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc};
 
 use crate::{config::Config, server::{device::data::TcpSendHandle, message_router::{RouterEvent, RouterSender}}};
 
@@ -62,8 +61,6 @@ pub enum PAPlaybackStreamEvent {
 pub struct PAStreamManager {
     record: Option<(Stream, TcpSendHandle)>,
     sender: EventToAudioServerSender,
-    bytes_per_second: u64,
-    data_count_time: Option<Instant>,
     recording_buffer: BytesMut,
     enable_recording: bool,
     quit_requested: bool,
@@ -74,8 +71,6 @@ impl PAStreamManager {
         Self {
             record: None,
             sender,
-            bytes_per_second: 0,
-            data_count_time: None,
             recording_buffer: BytesMut::new(),
             enable_recording: true,
             quit_requested: false,
@@ -196,7 +191,7 @@ impl PAStreamManager {
         Ok(())
     }
 
-    fn handle_recording_stream_read(&mut self, read_size: usize) {
+    fn handle_recording_stream_read(&mut self) {
         let (r, ref mut send_handle) = self.record.as_mut().unwrap();
 
         if !self.enable_recording {
@@ -242,8 +237,8 @@ impl PAStreamManager {
             PARecordingStreamEvent::StateChange => {
                 self.handle_recording_stream_state_change();
             }
-            PARecordingStreamEvent::Read(read_size) => {
-                self.handle_recording_stream_read(read_size);
+            PARecordingStreamEvent::Read(_) => {
+                self.handle_recording_stream_read();
             }
             PARecordingStreamEvent::Moved => {
                 if let Some(name) = self.record.as_ref().map(|(s, _)| s.get_device_name()) {
@@ -271,7 +266,10 @@ impl PAStreamManager {
 }
 
 pub struct PAState {
-    main_loop: Mainloop,
+    // Make sure that Mainloop is not dropped when audio code is running.
+    // This is probably not required, but it adds some additional
+    // safety as some other objects use reference to this.
+    _main_loop: Mainloop,
     context: Context,
     context_ready: bool,
     sender: EventToAudioServerSender,
@@ -284,7 +282,7 @@ impl PAState {
     fn new(glib_context: &mut MainContext, sender: EventToAudioServerSender) -> Self {
         let main_loop = pulse_glib::Mainloop::new(Some(glib_context)).unwrap();
 
-        let mut proplist = Proplist::new().unwrap();
+        let proplist = Proplist::new().unwrap();
 
         let mut context = Context::new_with_proplist(&main_loop, "Jonect", &proplist).unwrap();
 
@@ -298,7 +296,7 @@ impl PAState {
         let stream_manager = PAStreamManager::new(sender.clone());
 
         Self {
-            main_loop,
+            _main_loop: main_loop,
             context,
             context_ready: false,
             sender,

@@ -4,14 +4,13 @@
 
 //! Test client
 
-use bytes::{BufMut, BytesMut};
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream, runtime::Runtime, signal, sync::{mpsc, oneshot}};
+use tokio::{io::{AsyncReadExt}, net::TcpStream, runtime::Runtime, signal, sync::{mpsc, oneshot}};
 
 use crate::{config::{EVENT_CHANNEL_SIZE, TestClientConfig}, server::device::protocol::ServerMessage, utils::{Connection, ConnectionEvent}};
 
 use crate::server::device::{protocol::{ClientInfo, ClientMessage}};
 
-use std::{convert::TryInto, net::{SocketAddr, ToSocketAddrs}, time::{Duration, Instant}};
+use std::{net::{SocketAddr, ToSocketAddrs}, time::{Duration, Instant}};
 
 pub struct TestClient {
     config: TestClientConfig,

@@ -7,15 +7,15 @@ pub mod audio;
 pub mod ui;
 pub mod message_router;
 
-use self::device::{FromDeviceManagerToServerEvent, DeviceManagerEvent};
+use self::device::{DeviceManagerEvent};
 
 use {
-    audio::{AudioThread, AudioServerEvent, EventToAudioServerSender},
+    audio::{AudioThread, AudioServerEvent},
 };
 
-use crate::{config::Config, server::{device::{DeviceManagerTask}, message_router::{Router, RouterSender}, ui::{UiConnectionManager, UiProtocolFromUiToServer}}, utils::{QuitSender, SendDownward, SendUpward}};
+use crate::{config::Config, server::{device::{DeviceManagerTask}, message_router::{Router, RouterSender}, ui::{UiConnectionManager}}, utils::{QuitSender}};
 
-use tokio::{sync::{mpsc}, signal};
+use tokio::{signal};
 
 use tokio::runtime::Runtime;
 

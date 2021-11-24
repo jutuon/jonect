@@ -6,15 +6,13 @@ pub mod protocol;
 pub mod state;
 pub mod data;
 
-use bytes::BytesMut;
-use serde::Serialize;
-use tokio::{io::{AsyncReadExt, AsyncWrite, AsyncWriteExt}, net::{TcpListener, TcpStream, tcp::{ReadHalf, WriteHalf}}, sync::{mpsc, oneshot}, task::JoinHandle};
+use tokio::{net::{TcpListener}, sync::{mpsc}, task::JoinHandle};
 
-use std::{collections::HashMap, convert::TryInto, fmt::{self, Debug}, io::{self, ErrorKind}, pin, time::Duration};
+use std::{collections::HashMap, fmt::{Debug}, io::{self}, time::Duration};
 
-use crate::{config, server::{audio::AudioServerEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward}};
+use crate::{config, server::{audio::AudioServerEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionId}};
 
-use self::{data::{DataConnectionHandle, TcpSendHandle}, protocol::{ClientMessage, ServerInfo, ServerMessage}, state::{DeviceEvent, DeviceState}};
+use self::{data::{TcpSendHandle}, protocol::{ClientMessage}, state::{DeviceEvent, DeviceState}};
 
 use crate::config::{EVENT_CHANNEL_SIZE};
 
@@ -54,13 +52,11 @@ impl DeviceManager {
         r_sender: RouterSender,
         receiver: MessageReceiver<DeviceManagerEvent>,
     ) -> Self {
-        let dm = Self {
+        Self {
             r_sender,
             receiver,
             next_connection_id: 0,
-        };
-
-        dm
+        }
     }
 
     pub async fn run(mut self) {

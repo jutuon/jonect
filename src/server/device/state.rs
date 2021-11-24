@@ -4,7 +4,7 @@
 
 use std::{net::SocketAddr, time::Instant};
 
-use crate::utils::{ConnectionHandle, ConnectionId, SendDownward, SendUpward};
+use crate::utils::{ConnectionHandle, ConnectionId, SendUpward};
 
 use super::{data::{DataConnection, DataConnectionEvent, DataConnectionHandle}, protocol::{AudioFormat, AudioStreamInfo, ClientMessage, ServerInfo, ServerMessage}};
 

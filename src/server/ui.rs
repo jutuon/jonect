@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use tokio::{net::{TcpListener, TcpStream}, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use crate::{config::{self, EVENT_CHANNEL_SIZE}, server::device::DeviceManagerEvent, utils::{Connection, ConnectionEvent, QuitReceiver, QuitSender, SendDownward, SendUpward}};
+use crate::{config::{self, EVENT_CHANNEL_SIZE}, server::device::DeviceManagerEvent, utils::{Connection, ConnectionEvent, ConnectionHandle, QuitReceiver, QuitSender}};
 
 use super::{device::TcpSupportError, message_router::{MessageReceiver, RouterSender}};
 
@@ -112,7 +112,7 @@ impl UiConnectionManager {
         let (sender, mut connections_receiver) =
             mpsc::channel::<ConnectionEvent<UiProtocolFromUiToServer>>(EVENT_CHANNEL_SIZE);
 
-        let connection_handle = Connection::spawn_connection_task(
+        let connection_handle: ConnectionHandle<UiProtocolFromUiToServer> = Connection::spawn_connection_task(
             0,
             read_half,
             write_half,
@@ -133,14 +133,6 @@ impl UiConnectionManager {
                             eprintln!("TCP support disabled {:?}", error);
                             continue;
                         }
-                    }
-
-                    tokio::select! {
-                        result = &mut quit_receiver => {
-                            result.unwrap();
-                            break QuitReason::QuitRequest;
-                        }
-                        _ = connection_handle.send_down(UiProtocolFromServerToUi::Message("test".to_string())) => (),
                     }
                 }
                 event = connections_receiver.recv() => {
