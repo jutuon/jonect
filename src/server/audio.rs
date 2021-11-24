@@ -9,7 +9,7 @@ use std::{
 use self::audio_server::{AudioServer};
 
 use crate::config::Config;
-use crate::{config::EVENT_CHANNEL_SIZE, utils::ShutdownWatch};
+use crate::{config::EVENT_CHANNEL_SIZE};
 
 use tokio::sync::{mpsc, oneshot};
 
@@ -169,12 +169,11 @@ pub struct AudioThread {
 }
 
 impl AudioThread {
-    pub async fn start(shutdown_watch: ShutdownWatch, r_sender: RouterSender, config: Arc<Config>) -> Self  {
+    pub async fn start(r_sender: RouterSender, config: Arc<Config>) -> Self  {
         let (init_ok_sender, mut init_ok_receiver) = mpsc::channel(1);
 
         let audio_thread = Some(std::thread::spawn(move || {
             AudioServer::new(r_sender, init_ok_sender, config).run();
-            drop(shutdown_watch);
         }));
 
         init_ok_receiver.recv().await.unwrap();

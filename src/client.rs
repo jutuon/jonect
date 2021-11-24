@@ -7,7 +7,7 @@
 use bytes::{BufMut, BytesMut};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream, runtime::Runtime, signal, sync::{mpsc, oneshot}};
 
-use crate::{config::{EVENT_CHANNEL_SIZE, TestClientConfig}, server::device::protocol::ServerMessage, utils::{Connection, ConnectionEvent, ShutdownWatch}};
+use crate::{config::{EVENT_CHANNEL_SIZE, TestClientConfig}, server::device::protocol::ServerMessage, utils::{Connection, ConnectionEvent}};
 
 use crate::server::device::{protocol::{ClientInfo, ClientMessage}};
 
@@ -48,7 +48,6 @@ impl AsyncClient {
     }
 
     pub async fn run(self) {
-        let (shutdown_watch, mut shutdown_watch_receiver) = mpsc::channel(1);
 
         let address = self.config.address.to_socket_addrs().unwrap().next().unwrap();
 
@@ -63,7 +62,6 @@ impl AsyncClient {
             read_half,
             write_half,
             sender.into(),
-            shutdown_watch.clone(),
         );
 
         let message = ClientMessage::ClientInfo(ClientInfo::new("test"));
@@ -98,7 +96,6 @@ impl AsyncClient {
 
                                     let (quit_sender, quit_receiver) = oneshot::channel();
                                     let task = Self::handle_data_connection(
-                                        shutdown_watch.clone(),
                                         quit_receiver,
                                         connection,
                                     );
@@ -128,19 +125,15 @@ impl AsyncClient {
 
         // Quit started. Wait all components to close.
 
-        drop(shutdown_watch);
-
         if let Some((handle, quit_sender)) = data_stream.take() {
             quit_sender.send(()).unwrap();
             handle.await.unwrap();
         }
 
         connection_handle.quit().await;
-        let _ = shutdown_watch_receiver.recv().await;
     }
 
     async fn handle_data_connection(
-        _shutdown_watch: ShutdownWatch,
         mut quit_receiver: oneshot::Receiver<()>,
         mut connection: TcpStream,
     ) {

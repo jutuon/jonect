@@ -4,7 +4,7 @@
 
 use std::{net::SocketAddr, time::Instant};
 
-use crate::utils::{ConnectionHandle, ConnectionId, SendDownward, SendUpward, ShutdownWatch};
+use crate::utils::{ConnectionHandle, ConnectionId, SendDownward, SendUpward};
 
 use super::{data::{DataConnection, DataConnectionEvent, DataConnectionHandle}, protocol::{AudioFormat, AudioStreamInfo, ClientMessage, ServerInfo, ServerMessage}};
 
@@ -23,7 +23,6 @@ pub struct DeviceState {
     sender: SendUpward<(ConnectionId, DeviceEvent)>,
     ping_state: Option<Instant>,
     audio_out: Option<DataConnectionHandle>,
-    shutdown_watch: ShutdownWatch,
 }
 
 
@@ -32,7 +31,6 @@ impl DeviceState {
         connection_handle: ConnectionHandle<ServerMessage>,
         sender: SendUpward<(ConnectionId, DeviceEvent)>,
         address: SocketAddr,
-        shutdown_watch: ShutdownWatch,
     ) -> Self {
         let message = ServerMessage::ServerInfo(ServerInfo::new("Test server"));
         connection_handle.send_down(message).await;
@@ -44,7 +42,6 @@ impl DeviceState {
             ping_state: None,
             address,
             audio_out: None,
-            shutdown_watch,
         }
     }
 
@@ -57,7 +54,6 @@ impl DeviceState {
                     self.connection_handle.id(),
                     self.sender.clone(),
                     self.address,
-                    self.shutdown_watch.clone(),
                 );
 
                 self.audio_out = Some(handle);

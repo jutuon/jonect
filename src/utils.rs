@@ -10,9 +10,6 @@ use std::{convert::TryInto, fmt::{self, Debug}, io::{ErrorKind}};
 
 use crate::config::EVENT_CHANNEL_SIZE;
 
-/// Drop this type with some component.
-pub type ShutdownWatch = mpsc::Sender<()>;
-
 /// Handle for indicating running device data stream connections.
 ///
 /// Drop this type with some connection.
@@ -154,7 +151,6 @@ pub struct Connection<
     sender: SendUpward<ConnectionEvent<ReceiveM>>,
     receiver: mpsc::Receiver<SendM>,
     quit_receiver: oneshot::Receiver<()>,
-    _shutdown_watch: ShutdownWatch,
 }
 
 impl <
@@ -169,7 +165,6 @@ impl <
         read_half: R,
         write_half: W,
         sender: SendUpward<ConnectionEvent<ReceiveM>>,
-        _shutdown_watch: ShutdownWatch,
     ) -> ConnectionHandle<SendM> {
         let (event_sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
         let (quit_sender, quit_receiver) = oneshot::channel();
@@ -177,7 +172,6 @@ impl <
         let connection = Self {
             id,
             sender,
-            _shutdown_watch,
             receiver,
             quit_receiver,
             read_half,

@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use tokio::{net::{TcpListener, TcpStream}, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use crate::{config::{self, EVENT_CHANNEL_SIZE}, server::device::DeviceManagerEvent, utils::{Connection, ConnectionEvent, QuitReceiver, QuitSender, SendDownward, SendUpward, ShutdownWatch}};
+use crate::{config::{self, EVENT_CHANNEL_SIZE}, server::device::DeviceManagerEvent, utils::{Connection, ConnectionEvent, QuitReceiver, QuitSender, SendDownward, SendUpward}};
 
 use super::{device::TcpSupportError, message_router::{MessageReceiver, RouterSender}};
 
@@ -36,13 +36,11 @@ pub struct UiConnectionManager {
     server_sender: RouterSender,
     ui_receiver: MessageReceiver<UiEvent>,
     quit_receiver: QuitReceiver,
-    shutdown_watch: ShutdownWatch,
 }
 
 impl UiConnectionManager {
 
     pub fn task(
-        shutdown_watch: ShutdownWatch,
         server_sender: RouterSender,
         ui_receiver: MessageReceiver<UiEvent>,
     ) -> (
@@ -56,7 +54,6 @@ impl UiConnectionManager {
             server_sender,
             ui_receiver,
             quit_receiver,
-            shutdown_watch,
         };
 
         let task = async move {
@@ -94,7 +91,6 @@ impl UiConnectionManager {
                         &mut self.server_sender,
                         &mut self.ui_receiver,
                         &mut self.quit_receiver,
-                        &mut self.shutdown_watch,
                         socket,
                     ).await {
                         QuitReason::QuitRequest => return,
@@ -109,7 +105,6 @@ impl UiConnectionManager {
         mut server_sender: &mut RouterSender,
         ui_receiver: &mut MessageReceiver<UiEvent>,
         mut quit_receiver: &mut QuitReceiver,
-        shutdown_watch: &mut ShutdownWatch,
         connection: TcpStream,
     ) -> QuitReason {
         let (read_half, write_half) = connection.into_split();
@@ -122,7 +117,6 @@ impl UiConnectionManager {
             read_half,
             write_half,
             sender.into(),
-            shutdown_watch.clone(),
         );
 
         tokio::pin!(ui_receiver);

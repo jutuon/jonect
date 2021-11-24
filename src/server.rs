@@ -43,15 +43,9 @@ impl AsyncServer {
 
         // Init other components.
 
-        let (shutdown_watch, mut shutdown_watch_receiver) = mpsc::channel(1);
-
-        let mut at = AudioThread::start(shutdown_watch.clone(), r_sender.clone(), self.config.clone()).await;
-        let dm_task_handle = DeviceManagerTask::task(shutdown_watch.clone(), r_sender.clone(), device_manager_receiver);
-        let (ui_task_handle, ui_quit_sender) = UiConnectionManager::task(shutdown_watch.clone(), r_sender.clone(), ui_receiver);
-
-        // Drop initial instance of the shutdown watch to make the receiver
-        // to notice the shutdown.
-        drop(shutdown_watch);
+        let mut at = AudioThread::start(r_sender.clone(), self.config.clone()).await;
+        let dm_task_handle = DeviceManagerTask::task(r_sender.clone(), device_manager_receiver);
+        let (ui_task_handle, ui_quit_sender) = UiConnectionManager::task(r_sender.clone(), ui_receiver);
 
         async fn send_shutdown_request(
             r_sender: &mut RouterSender,
@@ -83,7 +77,6 @@ impl AsyncServer {
 
         // Quit started. Wait all components to close.
 
-        let _ = shutdown_watch_receiver.recv().await;
         at.join();
         dm_task_handle.await.unwrap();
         ui_task_handle.await.unwrap();

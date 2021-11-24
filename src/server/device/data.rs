@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 
 use tokio::{net::TcpListener, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use crate::{config::{self, EVENT_CHANNEL_SIZE}, utils::{ConnectionId, ConnectionShutdownWatch, SendDownward, SendUpward, ShutdownWatch}};
+use crate::{config::{self, EVENT_CHANNEL_SIZE}, utils::{ConnectionId, ConnectionShutdownWatch, SendDownward, SendUpward}};
 
 use super::{DeviceId, state::DeviceEvent};
 
@@ -105,7 +105,6 @@ impl DataConnectionHandle {
 }
 
 pub struct DataConnection {
-    _shutdown_watch: ShutdownWatch,
     command_connection_id: ConnectionId,
     sender: SendUpward<(ConnectionId, DeviceEvent)>,
     receiver: mpsc::Receiver<DataConnectionEventFromDevice>,
@@ -119,13 +118,11 @@ impl DataConnection {
         command_connection_id: ConnectionId,
         sender: SendUpward<(ConnectionId, DeviceEvent)>,
         accept_from: SocketAddr,
-        _shutdown_watch: ShutdownWatch,
     ) -> DataConnectionHandle {
         let (event_sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
         let (quit_sender, quit_receiver) = oneshot::channel();
 
         let manager = Self {
-            _shutdown_watch,
             command_connection_id,
             sender,
             receiver,

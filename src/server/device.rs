@@ -12,7 +12,7 @@ use tokio::{io::{AsyncReadExt, AsyncWrite, AsyncWriteExt}, net::{TcpListener, Tc
 
 use std::{collections::HashMap, convert::TryInto, fmt::{self, Debug}, io::{self, ErrorKind}, pin, time::Duration};
 
-use crate::{config, server::{audio::AudioServerEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward, ShutdownWatch}};
+use crate::{config, server::{audio::AudioServerEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, SendDownward}};
 
 use self::{data::{DataConnectionHandle, TcpSendHandle}, protocol::{ClientMessage, ServerInfo, ServerMessage}, state::{DeviceEvent, DeviceState}};
 
@@ -46,7 +46,6 @@ pub struct DeviceManager {
     r_sender: RouterSender,
     receiver: MessageReceiver<DeviceManagerEvent>,
     next_connection_id: u64,
-    _shutdown_watch: ShutdownWatch,
 }
 
 
@@ -54,13 +53,11 @@ impl DeviceManager {
     pub fn new(
         r_sender: RouterSender,
         receiver: MessageReceiver<DeviceManagerEvent>,
-        shutdown_watch: ShutdownWatch,
     ) -> Self {
         let dm = Self {
             r_sender,
             receiver,
             next_connection_id: 0,
-            _shutdown_watch: shutdown_watch,
         };
 
         dm
@@ -109,14 +106,12 @@ impl DeviceManager {
                                 read_half,
                                 write_half,
                                 connections_sender.clone().into(),
-                                self._shutdown_watch.clone(),
                             );
 
                             let device_state = DeviceState::new(
                                 connection_handle,
                                 device_event_sender.clone().into(),
                                 address,
-                                self._shutdown_watch.clone(),
                             ).await;
 
                             connections.insert(id, device_state);
@@ -206,9 +201,9 @@ pub struct DeviceManagerTask;
 
 
 impl DeviceManagerTask {
-    pub fn task(shutdown_watch: ShutdownWatch, r_sender: RouterSender, receiver: MessageReceiver<DeviceManagerEvent>) -> JoinHandle<()> {
+    pub fn task(r_sender: RouterSender, receiver: MessageReceiver<DeviceManagerEvent>) -> JoinHandle<()> {
 
-        let dm = DeviceManager::new(r_sender, receiver, shutdown_watch);
+        let dm = DeviceManager::new(r_sender, receiver);
 
         let task = async move {
             dm.run().await;

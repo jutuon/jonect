@@ -106,7 +106,6 @@ impl ServerClient {
         ui_receiver: &mut mpsc::Receiver<UiProtocolFromUiToServer>,
         mut quit_receiver: &mut QuitReceiver,
     ) -> QuitReason {
-        let (shutdown_watch, mut shutdown_watch_receiver) = mpsc::channel(1);
         let (read_half, write_half) = stream.into_split();
 
         let (sender, mut connections_receiver) =
@@ -117,7 +116,6 @@ impl ServerClient {
             read_half,
             write_half,
             sender.into(),
-            shutdown_watch
         );
 
         let quit_reason = loop {
@@ -158,7 +156,6 @@ impl ServerClient {
         // Quit started. Wait all components to close.
 
         connection_handle.quit().await;
-        let _ = shutdown_watch_receiver.recv().await;
 
         quit_reason
     }
