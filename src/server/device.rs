@@ -18,7 +18,6 @@ use std::{
 use crate::{config, server::{audio::AudioEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionId, QuitReceiver, QuitSender}};
 
 use self::{
-    data::TcpSendHandle,
     protocol::ClientMessage,
     state::{DeviceEvent, DeviceState},
 };
@@ -29,12 +28,6 @@ use super::{
     message_router::{MessageReceiver, RouterSender},
     ui::UiEvent,
 };
-
-#[derive(Debug)]
-pub enum FromDeviceManagerToServerEvent {
-    TcpSupportDisabledBecauseOfError(TcpSupportError),
-    DataConnection(TcpSendHandle),
-}
 
 #[derive(Debug)]
 pub enum TcpSupportError {
@@ -86,7 +79,7 @@ impl DeviceManager {
                 let e = UiEvent::TcpSupportDisabledBecauseOfError(e);
                 self.r_sender.send_ui_event(e).await;
                 // Wait quit message.
-                self.quit_receiver.await;
+                self.quit_receiver.await.unwrap();
                 return;
             }
         };
