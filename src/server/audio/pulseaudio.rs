@@ -4,11 +4,7 @@
 
 //! This code runs in a different thread.
 
-use std::{
-    any::Any,
-    collections::VecDeque,
-    io::{ErrorKind, Write},
-};
+use std::{any::Any, collections::VecDeque, io::{ErrorKind, Write}, thread::JoinHandle, sync::Arc};
 
 use bytes::{Buf, BytesMut};
 use gtk::glib::{MainContext, MainLoop, Sender};
@@ -505,5 +501,36 @@ impl EventToAudioServerSender {
 
     pub fn send_pa_record_stream_event(&mut self, event: PARecordingStreamEvent) {
         self.send_pa(PAEvent::RecordingStreamEvent(event));
+    }
+}
+
+
+pub struct PulseAudioThread {
+    audio_thread: Option<JoinHandle<()>>,
+    sender: EventToAudioServerSender,
+}
+
+impl PulseAudioThread {
+    pub async fn start(r_sender: RouterSender, config: Arc<Config>) -> Self {
+        let (init_ok_sender, init_ok_receiver) = oneshot::channel();
+
+        let audio_thread = Some(std::thread::spawn(move || {
+            AudioServer::new(r_sender, config).run(init_ok_sender);
+        }));
+
+        let sender = init_ok_receiver.await.unwrap();
+
+        Self { audio_thread, sender }
+    }
+
+    pub fn quit(&mut self) {
+        self.send_event(AudioServerEvent::RequestQuit);
+
+        // TODO: Handle thread panics?
+        self.audio_thread.take().unwrap().join().unwrap();
+    }
+
+    pub fn send_event(&mut self, a_event: AudioServerEvent) {
+        self.sender.send(a_event)
     }
 }

@@ -9,8 +9,6 @@ pub mod ui;
 
 use self::device::DeviceManagerEvent;
 
-use audio::{AudioServerEvent, AudioThread};
-
 use crate::{config::Config, server::{audio::AudioManager, device::DeviceManagerTask, message_router::{Router, RouterSender}, ui::UiConnectionManager}, utils::QuitSender};
 
 use tokio::signal;
