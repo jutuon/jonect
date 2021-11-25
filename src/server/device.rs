@@ -17,7 +17,7 @@ use std::{
 
 use crate::{
     config,
-    server::{audio::AudioServerEvent, device::data::DataConnectionEvent},
+    server::{audio::AudioEvent, device::data::DataConnectionEvent},
     utils::{Connection, ConnectionEvent, ConnectionId},
 };
 
@@ -168,7 +168,7 @@ impl DeviceManager {
                     match event {
                         DeviceEvent::Test => (),
                         DeviceEvent::DataConnection(DataConnectionEvent::NewConnection(handle)) => {
-                            self.r_sender.send_audio_server_event(AudioServerEvent::StartRecording {
+                            self.r_sender.send_audio_server_event(AudioEvent::StartRecording {
                                 send_handle: handle,
                             }).await;
                         }

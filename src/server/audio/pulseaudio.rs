@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! This code runs in a different thread.
+//! PulseAudio audio code
 
 use std::{any::Any, collections::VecDeque, io::{ErrorKind, Write}, thread::JoinHandle, sync::Arc};
 
@@ -19,6 +19,8 @@ use pulse::{
 use pulse_glib::Mainloop;
 use tokio::sync::{oneshot};
 
+use super::AudioEvent;
+
 use crate::{
     config::Config,
     server::{
@@ -29,10 +31,8 @@ use crate::{
 
 #[derive(Debug)]
 pub enum AudioServerEvent {
-    Message(String),
+    AudioEvent(AudioEvent),
     RequestQuit,
-    StartRecording { send_handle: TcpSendHandle },
-    StopRecording,
     PAEvent(PAEvent),
     PAQuitReady,
 }
@@ -398,7 +398,7 @@ impl PAState {
             );
         } else {
             self.wait_context_event_queue
-                .push_back(AudioServerEvent::StartRecording { send_handle });
+                .push_back(AudioServerEvent::AudioEvent(AudioEvent::StartRecording { send_handle }));
         }
     }
 
@@ -458,13 +458,17 @@ impl AudioServer {
                 AudioServerEvent::RequestQuit => {
                     pa_state.request_quit();
                 }
-                AudioServerEvent::StartRecording { send_handle } => {
-                    pa_state.start_recording(self.config.pa_source_name.clone(), send_handle);
+                AudioServerEvent::AudioEvent(event) => {
+                    match event {
+                        AudioEvent::StartRecording { send_handle } => {
+                            pa_state.start_recording(self.config.pa_source_name.clone(), send_handle);
+                        }
+                        AudioEvent::StopRecording => {
+                            pa_state.stop_recording();
+                        }
+                        AudioEvent::Message(_) => (),
+                    }
                 }
-                AudioServerEvent::StopRecording => {
-                    pa_state.stop_recording();
-                }
-                AudioServerEvent::Message(_) => (),
                 AudioServerEvent::PAEvent(event) => {
                     pa_state.handle_pa_event(event);
                 }
@@ -524,13 +528,13 @@ impl PulseAudioThread {
     }
 
     pub fn quit(&mut self) {
-        self.send_event(AudioServerEvent::RequestQuit);
+        self.sender.send(AudioServerEvent::RequestQuit);
 
         // TODO: Handle thread panics?
         self.audio_thread.take().unwrap().join().unwrap();
     }
 
-    pub fn send_event(&mut self, a_event: AudioServerEvent) {
-        self.sender.send(a_event)
+    pub fn send_event(&mut self, a_event: AudioEvent) {
+        self.sender.send(AudioServerEvent::AudioEvent(a_event))
     }
 }

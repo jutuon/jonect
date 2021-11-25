@@ -9,26 +9,34 @@ use std::{sync::Arc};
 use tokio::sync::oneshot;
 
 use self::pulseaudio::PulseAudioThread;
+use super::device::data::TcpSendHandle;
 use super::message_router::MessageReceiver;
 use super::message_router::RouterSender;
 use crate::config::Config;
 use crate::utils::QuitReceiver;
 use crate::utils::QuitSender;
 
-pub use pulseaudio::AudioServerEvent;
 pub use pulseaudio::EventToAudioServerSender;
+
+#[derive(Debug)]
+pub enum AudioEvent {
+    Message(String),
+    StopRecording,
+    StartRecording { send_handle: TcpSendHandle },
+}
+
 
 pub struct AudioManager {
     r_sender: RouterSender,
     quit_receiver: QuitReceiver,
-    audio_receiver: MessageReceiver<AudioServerEvent>,
+    audio_receiver: MessageReceiver<AudioEvent>,
     config: Arc<Config>,
 }
 
 impl AudioManager {
     pub fn task(
         r_sender: RouterSender,
-        audio_receiver: MessageReceiver<AudioServerEvent>,
+        audio_receiver: MessageReceiver<AudioEvent>,
         config: Arc<Config>,
     ) -> (tokio::task::JoinHandle<()>, QuitSender) {
         let (quit_sender, quit_receiver) = oneshot::channel();

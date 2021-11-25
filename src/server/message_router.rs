@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use crate::{config, utils};
 
 use super::{
-    audio::{AudioServerEvent},
+    audio::{AudioEvent},
     device::DeviceManagerEvent,
     ui::UiEvent,
 };
@@ -17,7 +17,7 @@ pub enum RouterEvent {
 
 #[derive(Debug)]
 pub enum RouterMessage {
-    AudioServer(AudioServerEvent),
+    AudioServer(AudioEvent),
     DeviceManager(DeviceManagerEvent),
     Ui(UiEvent),
     Router(RouterEvent),
@@ -26,7 +26,7 @@ pub enum RouterMessage {
 #[derive(Debug)]
 pub struct Router {
     r_receiver: mpsc::Receiver<RouterMessage>,
-    audio_sender: mpsc::Sender<AudioServerEvent>,
+    audio_sender: mpsc::Sender<AudioEvent>,
     device_manager_sender: mpsc::Sender<DeviceManagerEvent>,
     ui_sender: mpsc::Sender<UiEvent>,
 }
@@ -37,7 +37,7 @@ impl Router {
         RouterSender,
         MessageReceiver<DeviceManagerEvent>,
         MessageReceiver<UiEvent>,
-        MessageReceiver<AudioServerEvent>,
+        MessageReceiver<AudioEvent>,
     ) {
         let (r_sender, r_receiver) = mpsc::channel(config::EVENT_CHANNEL_SIZE);
 
@@ -108,7 +108,7 @@ impl RouterSender {
         self.sender.send(RouterMessage::Ui(event)).await.unwrap()
     }
 
-    pub async fn send_audio_server_event(&mut self, event: AudioServerEvent) {
+    pub async fn send_audio_server_event(&mut self, event: AudioEvent) {
         self.sender
             .send(RouterMessage::AudioServer(event))
             .await
