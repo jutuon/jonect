@@ -6,7 +6,7 @@ pub mod data;
 pub mod protocol;
 pub mod state;
 
-use tokio::{net::TcpListener, sync::mpsc, task::JoinHandle};
+use tokio::{net::TcpListener, sync::{mpsc, oneshot}, task::JoinHandle};
 
 use std::{
     collections::HashMap,
@@ -15,11 +15,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    config,
-    server::{audio::AudioEvent, device::data::DataConnectionEvent},
-    utils::{Connection, ConnectionEvent, ConnectionId},
-};
+use crate::{config, server::{audio::AudioEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionId, QuitReceiver, QuitSender}};
 
 use self::{
     data::TcpSendHandle,
@@ -48,7 +44,6 @@ pub enum TcpSupportError {
 
 #[derive(Debug)]
 pub enum DeviceManagerEvent {
-    RequestQuit,
     Message(String),
     RunDeviceConnectionPing,
 }
@@ -57,17 +52,30 @@ type DeviceId = String;
 
 pub struct DeviceManager {
     r_sender: RouterSender,
+    quit_receiver: QuitReceiver,
     receiver: MessageReceiver<DeviceManagerEvent>,
     next_connection_id: u64,
 }
 
 impl DeviceManager {
-    pub fn new(r_sender: RouterSender, receiver: MessageReceiver<DeviceManagerEvent>) -> Self {
-        Self {
+    pub fn task(
+        r_sender: RouterSender,
+        receiver: MessageReceiver<DeviceManagerEvent>,
+    ) -> (JoinHandle<()>, QuitSender)  {
+        let (quit_sender, quit_receiver) = oneshot::channel();
+
+        let dm = Self {
             r_sender,
             receiver,
             next_connection_id: 0,
-        }
+            quit_receiver,
+        };
+
+        let task = async move {
+            dm.run().await;
+        };
+
+        (tokio::spawn(task), quit_sender)
     }
 
     pub async fn run(mut self) {
@@ -77,7 +85,8 @@ impl DeviceManager {
                 let e = TcpSupportError::ListenerCreationError(e);
                 let e = UiEvent::TcpSupportDisabledBecauseOfError(e);
                 self.r_sender.send_ui_event(e).await;
-                self.wait_quit_event().await;
+                // Wait quit message.
+                self.quit_receiver.await;
                 return;
             }
         };
@@ -94,6 +103,7 @@ impl DeviceManager {
 
         loop {
             tokio::select! {
+                result = &mut self.quit_receiver => break result.unwrap(),
                 result = listener.accept(), if tcp_listener_enabled => {
                     match result {
                         Ok((stream, address)) => {
@@ -135,9 +145,6 @@ impl DeviceManager {
                     match event {
                         DeviceManagerEvent::Message(_) => {
 
-                        }
-                        DeviceManagerEvent::RequestQuit => {
-                            break;
                         }
                         DeviceManagerEvent::RunDeviceConnectionPing => {
                             for connection in connections.values_mut() {
@@ -190,31 +197,5 @@ impl DeviceManager {
         for connection in connections.into_values() {
             connection.quit().await;
         }
-    }
-
-    async fn wait_quit_event(&mut self) {
-        loop {
-            let event = self.receiver.recv().await;
-            if let DeviceManagerEvent::RequestQuit = event {
-                return;
-            }
-        }
-    }
-}
-
-pub struct DeviceManagerTask;
-
-impl DeviceManagerTask {
-    pub fn task(
-        r_sender: RouterSender,
-        receiver: MessageReceiver<DeviceManagerEvent>,
-    ) -> JoinHandle<()> {
-        let dm = DeviceManager::new(r_sender, receiver);
-
-        let task = async move {
-            dm.run().await;
-        };
-
-        tokio::spawn(task)
     }
 }
