@@ -21,19 +21,18 @@ use pulse::{
     stream::Stream,
 };
 use pulse_glib::Mainloop;
-use tokio::sync::mpsc;
+use tokio::sync::{oneshot};
 
 use crate::{
     config::Config,
     server::{
         device::data::TcpSendHandle,
-        message_router::{RouterEvent, RouterSender},
+        message_router::{RouterSender},
     },
 };
 
 #[derive(Debug)]
 pub enum AudioServerEvent {
-    RouterConnectionOk,
     Message(String),
     RequestQuit,
     StartRecording { send_handle: TcpSendHandle },
@@ -422,19 +421,16 @@ impl PAState {
 /// AudioServer will modify glib thread default MainContext.
 pub struct AudioServer {
     server_event_sender: RouterSender,
-    init_ok_sender: mpsc::Sender<()>,
     config: std::sync::Arc<Config>,
 }
 
 impl AudioServer {
     pub fn new(
         server_event_sender: RouterSender,
-        init_ok_sender: mpsc::Sender<()>,
         config: std::sync::Arc<Config>,
     ) -> Self {
         Self {
             server_event_sender,
-            init_ok_sender,
             config,
         }
     }
@@ -442,7 +438,7 @@ impl AudioServer {
     /// Run audio server code. This method will block until the server is closed.
     ///
     /// This function will modify glib thread default MainContext.
-    pub fn run(mut self) {
+    pub fn run(mut self, init_ok_sender: oneshot::Sender<EventToAudioServerSender>) {
         // Create context for this thread
         let mut context = MainContext::new();
         context.push_thread_default();
@@ -452,8 +448,7 @@ impl AudioServer {
         let sender = EventToAudioServerSender::new(sender);
 
         // Send init event.
-        self.server_event_sender
-            .send_router_blocking(RouterEvent::ConnectAudioServer(sender.clone()));
+        init_ok_sender.send(sender.clone()).unwrap();
 
         // Init PulseAudio context.
         let mut pa_state = PAState::new(&mut context, sender);
@@ -461,13 +456,9 @@ impl AudioServer {
         // Init glib mainloop.
         let glib_main_loop = MainLoop::new(Some(&context), false);
 
-        let init_ok_sender = self.init_ok_sender.clone();
         let glib_main_loop_clone = glib_main_loop.clone();
         receiver.attach(Some(&context), move |event| {
             match event {
-                AudioServerEvent::RouterConnectionOk => {
-                    init_ok_sender.blocking_send(()).unwrap();
-                }
                 AudioServerEvent::RequestQuit => {
                     pa_state.request_quit();
                 }

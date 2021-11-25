@@ -5,14 +5,13 @@ use tokio::sync::mpsc;
 use crate::{config, utils};
 
 use super::{
-    audio::{AudioServerEvent, EventToAudioServerSender},
+    audio::{AudioServerEvent},
     device::DeviceManagerEvent,
     ui::UiEvent,
 };
 
 #[derive(Debug)]
 pub enum RouterEvent {
-    ConnectAudioServer(EventToAudioServerSender),
     SendQuitRequest,
 }
 
@@ -27,7 +26,7 @@ pub enum RouterMessage {
 #[derive(Debug)]
 pub struct Router {
     r_receiver: mpsc::Receiver<RouterMessage>,
-    audio_sender: Option<EventToAudioServerSender>,
+    audio_sender: mpsc::Sender<AudioServerEvent>,
     device_manager_sender: mpsc::Sender<DeviceManagerEvent>,
     ui_sender: mpsc::Sender<UiEvent>,
 }
@@ -38,6 +37,7 @@ impl Router {
         RouterSender,
         MessageReceiver<DeviceManagerEvent>,
         MessageReceiver<UiEvent>,
+        MessageReceiver<AudioServerEvent>,
     ) {
         let (r_sender, r_receiver) = mpsc::channel(config::EVENT_CHANNEL_SIZE);
 
@@ -46,10 +46,11 @@ impl Router {
         let (device_manager_sender, device_manager_receiver) =
             mpsc::channel(config::EVENT_CHANNEL_SIZE);
         let (ui_sender, ui_receiver) = mpsc::channel(config::EVENT_CHANNEL_SIZE);
+        let (audio_sender, audio_receiver) = mpsc::channel(config::EVENT_CHANNEL_SIZE);
 
         let router = Self {
             r_receiver,
-            audio_sender: None,
+            audio_sender,
             device_manager_sender,
             ui_sender,
         };
@@ -59,6 +60,7 @@ impl Router {
             sender,
             MessageReceiver::new(device_manager_receiver),
             MessageReceiver::new(ui_receiver),
+            MessageReceiver::new(audio_receiver),
         )
     }
 
@@ -69,7 +71,10 @@ impl Router {
                 Some(event) = self.r_receiver.recv() => {
                     match event {
                         RouterMessage::AudioServer(event) => {
-                            self.audio_sender.as_mut().unwrap().send(event);
+                            tokio::select! {
+                                result = &mut quit_receiver => break result.unwrap(),
+                                result = self.audio_sender.send(event) => result.unwrap(),
+                            }
                         }
                         RouterMessage::DeviceManager(event) => {
                             tokio::select! {
@@ -82,11 +87,6 @@ impl Router {
                                 result = &mut quit_receiver => break result.unwrap(),
                                 result = self.ui_sender.send(event) => result.unwrap(),
                             }
-                        }
-                        RouterMessage::Router(RouterEvent::ConnectAudioServer(mut sender)) => {
-                            sender.send(AudioServerEvent::RouterConnectionOk);
-                            self.audio_sender = Some(sender);
-
                         }
                         RouterMessage::Router(RouterEvent::SendQuitRequest) => {
                             // TODO: Should router send quit message to components?

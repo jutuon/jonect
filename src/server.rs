@@ -11,15 +11,7 @@ use self::device::DeviceManagerEvent;
 
 use audio::{AudioServerEvent, AudioThread};
 
-use crate::{
-    config::Config,
-    server::{
-        device::DeviceManagerTask,
-        message_router::{Router, RouterSender},
-        ui::UiConnectionManager,
-    },
-    utils::QuitSender,
-};
+use crate::{config::Config, server::{audio::AudioManager, device::DeviceManagerTask, message_router::{Router, RouterSender}, ui::UiConnectionManager}, utils::QuitSender};
 
 use tokio::signal;
 
@@ -39,26 +31,24 @@ impl AsyncServer {
     pub async fn run(&mut self) {
         // Init message routing.
 
-        let (router, mut r_sender, device_manager_receiver, ui_receiver) = Router::new();
+        let (router, mut r_sender, device_manager_receiver, ui_receiver, audio_receiver) = Router::new();
         let (r_quit_sender, r_quit_receiver) = tokio::sync::oneshot::channel();
 
         let router_task_handle = tokio::spawn(router.run(r_quit_receiver));
 
         // Init other components.
 
-        let mut at = AudioThread::start(r_sender.clone(), self.config.clone()).await;
+        let (audio_task_handle, audio_quit_sender) = AudioManager::task(r_sender.clone(), audio_receiver, self.config.clone());
         let dm_task_handle = DeviceManagerTask::task(r_sender.clone(), device_manager_receiver);
         let (ui_task_handle, ui_quit_sender) =
             UiConnectionManager::task(r_sender.clone(), ui_receiver);
 
-        async fn send_shutdown_request(r_sender: &mut RouterSender, ui_sender: QuitSender) {
-            r_sender
-                .send_audio_server_event(AudioServerEvent::RequestQuit)
-                .await;
+        async fn send_shutdown_request(r_sender: &mut RouterSender, ui_sender: QuitSender, audio_quit_sender: QuitSender) {
             r_sender
                 .send_device_manager_event(DeviceManagerEvent::RequestQuit)
                 .await;
             ui_sender.send(()).unwrap();
+            audio_quit_sender.send(()).unwrap();
         }
 
         let mut ctrl_c_listener_enabled = true;
@@ -68,7 +58,7 @@ impl AsyncServer {
                 quit_request = signal::ctrl_c(), if ctrl_c_listener_enabled => {
                     match quit_request {
                         Ok(()) => {
-                            send_shutdown_request(&mut r_sender, ui_quit_sender).await;
+                            send_shutdown_request(&mut r_sender, ui_quit_sender, audio_quit_sender).await;
                             break;
                         }
                         Err(e) => {
@@ -82,7 +72,7 @@ impl AsyncServer {
 
         // Quit started. Wait all components to close.
 
-        at.join();
+        audio_task_handle.await.unwrap();
         dm_task_handle.await.unwrap();
         ui_task_handle.await.unwrap();
 
