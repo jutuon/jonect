@@ -2,21 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-mod audio_server;
+mod pulseaudio;
 
 use std::{sync::Arc, thread::JoinHandle};
 
 use tokio::sync::oneshot;
 
-use self::audio_server::AudioServer;
+use self::pulseaudio::AudioServer;
 use super::message_router::MessageReceiver;
 use super::message_router::RouterSender;
 use crate::config::Config;
 use crate::utils::QuitReceiver;
 use crate::utils::QuitSender;
 
-pub use audio_server::AudioServerEvent;
-pub use audio_server::EventToAudioServerSender;
+pub use pulseaudio::AudioServerEvent;
+pub use pulseaudio::EventToAudioServerSender;
 
 pub struct AudioThread {
     audio_thread: Option<JoinHandle<()>>,
