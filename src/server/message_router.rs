@@ -8,11 +8,7 @@ use tokio::sync::mpsc;
 
 use crate::{config, utils};
 
-use super::{
-    audio::{AudioEvent},
-    device::DeviceManagerEvent,
-    ui::UiEvent,
-};
+use super::{audio::{AudioEvent}, device::{DeviceManagerEvent, DmEvent}, ui::UiEvent};
 
 #[derive(Debug)]
 pub enum RouterEvent {
@@ -22,7 +18,7 @@ pub enum RouterEvent {
 #[derive(Debug)]
 pub enum RouterMessage {
     AudioServer(AudioEvent),
-    DeviceManager(DeviceManagerEvent),
+    DeviceManager(DmEvent),
     Ui(UiEvent),
     Router(RouterEvent),
 }
@@ -31,7 +27,7 @@ pub enum RouterMessage {
 pub struct Router {
     r_receiver: mpsc::Receiver<RouterMessage>,
     audio_sender: mpsc::Sender<AudioEvent>,
-    device_manager_sender: mpsc::Sender<DeviceManagerEvent>,
+    device_manager_sender: mpsc::Sender<DmEvent>,
     ui_sender: mpsc::Sender<UiEvent>,
 }
 
@@ -39,7 +35,7 @@ impl Router {
     pub fn new() -> (
         Self,
         RouterSender,
-        MessageReceiver<DeviceManagerEvent>,
+        MessageReceiver<DmEvent>,
         MessageReceiver<UiEvent>,
         MessageReceiver<AudioEvent>,
     ) {
@@ -120,6 +116,13 @@ impl RouterSender {
     }
 
     pub async fn send_device_manager_event(&mut self, event: DeviceManagerEvent) {
+        self.sender
+            .send(RouterMessage::DeviceManager(event.into()))
+            .await
+            .unwrap()
+    }
+
+    pub async fn send_dm_internal_event(&mut self, event: DmEvent) {
         self.sender
             .send(RouterMessage::DeviceManager(event))
             .await

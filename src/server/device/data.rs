@@ -107,7 +107,7 @@ impl DataConnectionHandle {
 
 pub struct DataConnection {
     command_connection_id: ConnectionId,
-    sender: SendUpward<(ConnectionId, DeviceEvent)>,
+    sender: SendUpward<DeviceEvent>,
     receiver: mpsc::Receiver<DataConnectionEventFromDevice>,
     quit_receiver: oneshot::Receiver<()>,
     accept_from: SocketAddr,
@@ -117,7 +117,7 @@ pub struct DataConnection {
 impl DataConnection {
     pub fn task(
         command_connection_id: ConnectionId,
-        sender: SendUpward<(ConnectionId, DeviceEvent)>,
+        sender: SendUpward<DeviceEvent>,
         accept_from: SocketAddr,
     ) -> DataConnectionHandle {
         let (event_sender, receiver) = mpsc::channel(EVENT_CHANNEL_SIZE);
@@ -148,7 +148,7 @@ impl DataConnection {
             Err(e) => {
                 let e = DataConnectionEvent::TcpListenerBindError(e);
                 self.sender
-                    .send_up((self.command_connection_id, e.into()))
+                    .send_up(e.into())
                     .await;
                 self.quit_receiver.await.unwrap();
                 return;
@@ -159,13 +159,13 @@ impl DataConnection {
             Ok(address) => {
                 let event = DataConnectionEvent::PortNumber(address.port());
                 self.sender
-                    .send_up((self.command_connection_id, event.into()))
+                    .send_up(event.into())
                     .await;
             }
             Err(e) => {
                 let e = DataConnectionEvent::GetPortNumberError(e);
                 self.sender
-                    .send_up((self.command_connection_id, e.into()))
+                    .send_up(e.into())
                     .await;
                 self.quit_receiver.await.unwrap();
                 return;
@@ -195,11 +195,11 @@ impl DataConnection {
                                 Ok(Err(e)) | Err(e) => DataConnectionEvent::SendConnectionError(e),
                             };
 
-                            self.sender.send_up((self.command_connection_id, event.into())).await;
+                            self.sender.send_up(event.into()).await;
                         }
                         Err(e) => {
                             let e = DataConnectionEvent::AcceptError(e);
-                            self.sender.send_up((self.command_connection_id, e.into())).await;
+                            self.sender.send_up(e.into()).await;
                         }
                     }
                 }
