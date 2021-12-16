@@ -35,7 +35,7 @@ impl AsyncServer {
         // Init other components.
 
         let (audio_task_handle, audio_quit_sender) = AudioManager::task(r_sender.clone(), audio_receiver, self.config.clone());
-        let (dm_task_handle, dm_quit_sender) = DeviceManager::task(r_sender.clone(), device_manager_receiver);
+        let (dm_task_handle, dm_quit_sender) = DeviceManager::task(r_sender.clone(), device_manager_receiver, self.config.clone());
         let (ui_task_handle, ui_quit_sender) =
             UiConnectionManager::task(r_sender.clone(), ui_receiver);
 

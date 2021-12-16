@@ -153,12 +153,13 @@ impl PAState {
         }
     }
 
-    pub fn start_recording(&mut self, source_name: Option<String>, send_handle: TcpSendHandle) {
+    pub fn start_recording(&mut self, source_name: Option<String>, send_handle: TcpSendHandle, encode_opus: bool) {
         if self.context_ready {
             self.stream_manager.request_start_record_stream(
                 &mut self.context,
                 source_name,
                 send_handle,
+                encode_opus,
             );
         } else {
             self.wait_context_event_queue

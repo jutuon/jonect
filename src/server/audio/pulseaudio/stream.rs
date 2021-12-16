@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::{io::{ErrorKind, Write}};
+use std::{io::{ErrorKind, Write}, convert::TryInto};
 
+use audiopus::{coder::Encoder, SampleRate};
 use bytes::{Buf, BytesMut};
 
 use pulse::{
@@ -30,12 +31,23 @@ pub enum PAPlaybackStreamEvent {
     StateChange,
 }
 
+#[derive(Debug)]
+pub enum StreamError {
+    SocketError(std::io::Error),
+    NotEnoughBytesForOneSample,
+    EncoderError(audiopus::Error),
+}
+
 pub struct PAStreamManager {
     record: Option<(Stream, TcpSendHandle)>,
     sender: EventToAudioServerSender,
     recording_buffer: BytesMut,
     enable_recording: bool,
     quit_requested: bool,
+    encoder: Option<Encoder>,
+    encoder_buffer: Vec<i16>,
+    // Opus documentation recommends size 4000.
+    encoder_output_buffer: Box<[u8; 4000]>,
 }
 
 impl PAStreamManager {
@@ -46,6 +58,9 @@ impl PAStreamManager {
             recording_buffer: BytesMut::new(),
             enable_recording: true,
             quit_requested: false,
+            encoder: None,
+            encoder_buffer: Vec::new(),
+            encoder_output_buffer: Box::new([0; 4000]),
         }
     }
 
@@ -54,11 +69,24 @@ impl PAStreamManager {
         context: &mut Context,
         source_name: Option<String>,
         send_handle: TcpSendHandle,
+        encode_opus: bool,
     ) {
+        let rate = if encode_opus {
+            self.encoder = Some(Encoder::new(
+                SampleRate::Hz48000,
+                audiopus::Channels::Stereo,
+                audiopus::Application::Audio,
+            ).unwrap());
+            self.encoder_buffer.clear();
+            48000
+        } else {
+            44100
+        };
+
         let spec = Spec {
             format: pulse::sample::Format::S16le,
             channels: 2,
-            rate: 44100,
+            rate,
         };
 
         assert!(spec.is_valid(), "Stream data specification is invalid.");
@@ -122,7 +150,7 @@ impl PAStreamManager {
         data: &[u8],
         recording_buffer: &mut BytesMut,
         send_handle: &mut TcpSendHandle,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<(), StreamError> {
         loop {
             if recording_buffer.has_remaining() {
                 match send_handle.write(recording_buffer.chunk()) {
@@ -133,7 +161,7 @@ impl PAStreamManager {
                         if ErrorKind::WouldBlock == e.kind() {
                             break;
                         } else {
-                            return Err(e);
+                            return Err(StreamError::SocketError(e));
                         }
                     }
                 }
@@ -157,8 +185,42 @@ impl PAStreamManager {
                 if ErrorKind::WouldBlock == e.kind() {
                     recording_buffer.extend_from_slice(data);
                 } else {
-                    return Err(e);
+                    return Err(StreamError::SocketError(e));
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_data_with_encoding(
+        data: &[u8],
+        encoding_buffer: &mut Vec<i16>,
+        encoder_output_buffer: &mut [u8; 4000],
+        encoder: &mut Encoder,
+        recording_buffer: &mut BytesMut,
+        send_handle: &mut TcpSendHandle,
+    ) -> Result<(), StreamError> {
+        if data.len() % 2 != 0 {
+            return Err(StreamError::NotEnoughBytesForOneSample);
+        }
+
+        let mut sample_iterator = data.chunks_exact(2);
+
+        for bytes in sample_iterator {
+            let sample = i16::from_le_bytes(bytes.try_into().unwrap());
+            encoding_buffer.push(sample);
+
+            if encoding_buffer.len() == 240 {
+                // 240 is 120 samples per channel. That is minimum frame size
+                // for Opus at 48 kHz.
+
+                let size = encoder.encode(&encoding_buffer, encoder_output_buffer)
+                    .map_err(StreamError::EncoderError)?;
+
+                encoding_buffer.clear();
+
+                Self::handle_data(&encoder_output_buffer[..size], recording_buffer, send_handle)?;
             }
         }
 
@@ -181,12 +243,23 @@ impl PAStreamManager {
                     break;
                 }
                 PeekResult::Data(data) => {
-                    let result = Self::handle_data(data, &mut self.recording_buffer, send_handle);
+                    let result = if let Some(encoder) = &mut self.encoder {
+                        Self::handle_data_with_encoding(
+                            data,
+                            &mut self.encoder_buffer,
+                            &mut self.encoder_output_buffer,
+                            encoder,
+                            &mut self.recording_buffer,
+                            send_handle
+                        )
+                    } else {
+                        Self::handle_data(data, &mut self.recording_buffer, send_handle)
+                    };
 
                     match result {
                         Ok(()) => (),
                         Err(e) => {
-                            eprintln!("Audio write error: {}", e);
+                            eprintln!("Audio streaming error: {:?}", e);
                             r.discard().unwrap();
                             self.enable_recording = false;
                             self.stop_recording();

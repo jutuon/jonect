@@ -23,6 +23,7 @@ pub struct Config {
     pub pa_source_name: Option<String>,
     pub test_client_config: Option<TestClientConfig>,
     pub gui: Option<()>,
+    pub encode_opus: bool,
 }
 
 /// Parse command line args. Program may exit when running this.
@@ -33,6 +34,12 @@ pub fn parse_cmd_args() -> Config {
                 .short("t")
                 .long("test")
                 .help("Print 'test' and close the program."),
+        )
+        .arg(
+            Arg::with_name("encode-opus")
+                .short("e")
+                .long("encode-opus")
+                .help("Encode audio with Opus codec."),
         )
         .arg(
             Arg::with_name("pa-source-name")
@@ -73,5 +80,6 @@ pub fn parse_cmd_args() -> Config {
         pa_source_name,
         test_client_config,
         gui,
+        encode_opus: matches.is_present("encode-opus"),
     }
 }

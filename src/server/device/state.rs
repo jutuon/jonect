@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::{net::SocketAddr, time::Instant};
+use std::{net::SocketAddr, time::Instant, sync::Arc};
 
 use tokio::{net::TcpStream, sync::{mpsc, oneshot}, task::JoinHandle};
 
-use crate::{config::EVENT_CHANNEL_SIZE, server::{audio::AudioEvent, message_router::RouterSender}, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, QuitReceiver, QuitSender, SendDownward, SendUpward}};
+use crate::{config::{EVENT_CHANNEL_SIZE, Config}, server::{audio::AudioEvent, message_router::RouterSender}, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, QuitReceiver, QuitSender, SendDownward, SendUpward}};
 
 use super::{DeviceManagerInternalEvent, data::{DataConnection, DataConnectionEvent, DataConnectionHandle}, protocol::{AudioFormat, AudioStreamInfo, ClientMessage, ServerInfo, ServerMessage}};
 
@@ -44,6 +44,7 @@ pub struct DeviceStateTask {
     event_sender: mpsc::Sender<DeviceEvent>,
     event_receiver: mpsc::Receiver<DeviceEvent>,
     connection_receiver: mpsc::Receiver<ConnectionEvent<ClientMessage>>,
+    config: Arc<Config>,
 
 }
 
@@ -53,6 +54,7 @@ impl DeviceStateTask {
         stream: TcpStream,
         address: SocketAddr,
         r_sender: RouterSender,
+        config: Arc<Config>,
     ) -> DeviceStateTaskHandle {
         let (connection_sender, connection_receiver) =
             mpsc::channel::<ConnectionEvent<ClientMessage>>(EVENT_CHANNEL_SIZE);
@@ -84,6 +86,7 @@ impl DeviceStateTask {
             event_receiver,
             event_sender: event_sender.clone(),
             connection_receiver,
+            config,
         };
 
         let task_handle = tokio::spawn(device_task.run(quit_receiver));
@@ -203,7 +206,11 @@ impl DeviceStateTask {
                 }).await;
             }
             DataConnectionEvent::PortNumber(tcp_port) => {
-                let info = AudioStreamInfo::new(AudioFormat::Pcm, 2u8, 44100u32, tcp_port);
+                let info = if self.config.encode_opus {
+                    AudioStreamInfo::new(AudioFormat::Opus, 2u8, 48000u32, tcp_port)
+                } else {
+                    AudioStreamInfo::new(AudioFormat::Pcm, 2u8, 44100u32, tcp_port)
+                };
 
                 self.connection_handle
                     .send_down(ServerMessage::PlayAudioStream(info))

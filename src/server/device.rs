@@ -12,10 +12,10 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     io::{self},
-    time::Duration,
+    time::Duration, sync::Arc,
 };
 
-use crate::{config, server::{audio::AudioEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionId, QuitReceiver, QuitSender}};
+use crate::{config::{self, Config}, server::{audio::AudioEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionId, QuitReceiver, QuitSender}};
 
 use self::{protocol::ClientMessage, state::{DeviceEvent, DeviceStateTask, DeviceStateTaskHandle}};
 
@@ -74,12 +74,14 @@ pub struct DeviceManager {
     next_connection_id: u64,
     connections: HashMap::<ConnectionId, DeviceStateTaskHandle>,
     tcp_listener_enabled: bool,
+    config: Arc<Config>,
 }
 
 impl DeviceManager {
     pub fn task(
         r_sender: RouterSender,
         receiver: MessageReceiver<DmEvent>,
+        config: Arc<Config>,
     ) -> (JoinHandle<()>, QuitSender)  {
         let (quit_sender, quit_receiver) = oneshot::channel();
 
@@ -89,6 +91,7 @@ impl DeviceManager {
             next_connection_id: 0,
             connections: HashMap::new(),
             tcp_listener_enabled: true,
+            config,
         };
 
         let task = async move {
@@ -164,7 +167,7 @@ impl DeviceManager {
                     }
                 };
 
-                let device_state = DeviceStateTask::task(id, stream, address, self.r_sender.clone()).await;
+                let device_state = DeviceStateTask::task(id, stream, address, self.r_sender.clone(), self.config.clone()).await;
 
                 self.connections.insert(id, device_state);
             }

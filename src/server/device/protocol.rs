@@ -36,11 +36,16 @@ impl ServerInfo {
 pub enum AudioFormat {
     // 16-bit little endian PCM samples.
     Pcm,
+    // Opus encoded audio stream.
+    Opus,
 }
 
 impl AudioFormat {
     pub fn as_json_value(&self) -> &'static str {
-        "pcm-s16le"
+        match self {
+            Self::Pcm => "pcm-s16le",
+            Self::Opus => "opus",
+        }
     }
 }
 
@@ -48,6 +53,7 @@ impl AudioFormat {
 pub struct AudioStreamInfo {
     /// Possible values:
     /// * pcm-s16le - 16-bit little endian PCM samples.
+    /// * opus - Opus encoded audio stream.
     format: String,
     channels: u8,
     rate: u32,
