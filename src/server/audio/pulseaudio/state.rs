@@ -153,17 +153,24 @@ impl PAState {
         }
     }
 
-    pub fn start_recording(&mut self, source_name: Option<String>, send_handle: TcpSendHandle, encode_opus: bool) {
+    pub fn start_recording(
+        &mut self,
+        source_name: Option<String>,
+        send_handle: TcpSendHandle,
+        encode_opus: bool,
+        sample_rate: u32,
+    ) {
         if self.context_ready {
             self.stream_manager.request_start_record_stream(
                 &mut self.context,
                 source_name,
                 send_handle,
                 encode_opus,
+                sample_rate,
             );
         } else {
             self.wait_context_event_queue
-                .push_back(AudioServerEvent::AudioEvent(AudioEvent::StartRecording { send_handle }));
+                .push_back(AudioServerEvent::AudioEvent(AudioEvent::StartRecording { send_handle, sample_rate }));
         }
     }
 

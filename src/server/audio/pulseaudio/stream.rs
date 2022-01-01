@@ -10,7 +10,7 @@ use bytes::{Buf, BytesMut};
 use pulse::{
     context::{Context},
     sample::Spec,
-    stream::Stream,
+    stream::Stream, def::BufferAttr,
 };
 
 use crate::{server::{audio::pulseaudio::state::PAEvent, device::data::TcpSendHandle}};
@@ -70,6 +70,7 @@ impl PAStreamManager {
         source_name: Option<String>,
         send_handle: TcpSendHandle,
         encode_opus: bool,
+        sample_rate: u32,
     ) {
         let rate = if encode_opus {
             self.encoder = Some(Encoder::new(
@@ -80,7 +81,7 @@ impl PAStreamManager {
             self.encoder_buffer.clear();
             48000
         } else {
-            44100
+            sample_rate
         };
 
         let spec = Spec {
@@ -94,11 +95,21 @@ impl PAStreamManager {
         let mut stream = Stream::new(context, "Jonect recording stream", &spec, None)
             .expect("Stream creation error");
 
+        let buffer_settings = BufferAttr {
+            maxlength: u32::MAX,
+            tlength: u32::MAX,
+            prebuf: u32::MAX,
+            minreq: u32::MAX,
+            // channels * sample byte count * sample count
+            // At 44100 Hz one millisecond is about 44,1 samples.
+            fragsize: 2*2*32,
+        };
+
         stream
             .connect_record(
                 source_name.as_deref(),
-                None,
-                pulse::stream::FlagSet::NOFLAGS,
+                Some(&buffer_settings),
+                pulse::stream::FlagSet::ADJUST_LATENCY,
             )
             .unwrap();
 

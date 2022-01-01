@@ -61,6 +61,7 @@ pub struct AudioStreamInfo {
 }
 
 impl AudioStreamInfo {
+    // TODO: Use enum for sample rate.
     pub fn new(format: AudioFormat, channels: u8, rate: u32, port: u16) -> Self {
         Self {
             format: format.as_json_value().to_string(),
@@ -101,6 +102,7 @@ pub enum ClientMessage {
 pub struct ClientInfo {
     pub version: String,
     pub id: String,
+    pub native_sample_rate: i32,
 }
 
 impl ClientInfo {
@@ -108,6 +110,7 @@ impl ClientInfo {
         Self {
             version: "0.1".to_string(),
             id: id.into(),
+            native_sample_rate: 44100,
         }
     }
 }

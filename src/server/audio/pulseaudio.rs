@@ -85,11 +85,12 @@ impl AudioServer {
                 }
                 AudioServerEvent::AudioEvent(event) => {
                     match event {
-                        AudioEvent::StartRecording { send_handle } => {
+                        AudioEvent::StartRecording { send_handle, sample_rate } => {
                             pa_state.start_recording(
                                 self.config.pa_source_name.clone(),
                                 send_handle,
-                                self.config.encode_opus
+                                self.config.encode_opus,
+                                sample_rate,
                             );
                         }
                         AudioEvent::StopRecording => {

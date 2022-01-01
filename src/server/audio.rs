@@ -22,7 +22,7 @@ pub use pulseaudio::EventToAudioServerSender;
 pub enum AudioEvent {
     Message(String),
     StopRecording,
-    StartRecording { send_handle: TcpSendHandle },
+    StartRecording { send_handle: TcpSendHandle, sample_rate: u32 },
 }
 
 

@@ -8,7 +8,7 @@ use tokio::{net::TcpStream, sync::{mpsc, oneshot}, task::JoinHandle};
 
 use crate::{config::{EVENT_CHANNEL_SIZE, Config}, server::{audio::AudioEvent, message_router::RouterSender}, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, QuitReceiver, QuitSender, SendDownward, SendUpward}};
 
-use super::{DeviceManagerInternalEvent, data::{DataConnection, DataConnectionEvent, DataConnectionHandle}, protocol::{AudioFormat, AudioStreamInfo, ClientMessage, ServerInfo, ServerMessage}};
+use super::{DeviceManagerInternalEvent, data::{DataConnection, DataConnectionEvent, DataConnectionHandle}, protocol::{AudioFormat, AudioStreamInfo, ClientMessage, ServerInfo, ServerMessage, ClientInfo}};
 
 #[derive(Debug)]
 pub enum DeviceEvent {
@@ -45,7 +45,7 @@ pub struct DeviceStateTask {
     event_receiver: mpsc::Receiver<DeviceEvent>,
     connection_receiver: mpsc::Receiver<ConnectionEvent<ClientMessage>>,
     config: Arc<Config>,
-
+    client_info: Option<ClientInfo>,
 }
 
 impl DeviceStateTask {
@@ -87,6 +87,7 @@ impl DeviceStateTask {
             event_sender: event_sender.clone(),
             connection_receiver,
             config,
+            client_info: None,
         };
 
         let task_handle = tokio::spawn(device_task.run(quit_receiver));
@@ -173,6 +174,8 @@ impl DeviceStateTask {
             ClientMessage::ClientInfo(info) => {
                 println!("ClientInfo {:?}", info);
 
+                self.client_info = Some(info);
+
                 let handle = DataConnection::task(
                     self.connection_handle.id(),
                     self.event_sender.clone().into(),
@@ -203,14 +206,28 @@ impl DeviceStateTask {
             DataConnectionEvent::NewConnection(handle) => {
                 self.r_sender.send_audio_server_event(AudioEvent::StartRecording {
                     send_handle: handle,
+                    sample_rate: self.client_info
+                        .as_ref()
+                        .unwrap()
+                        .native_sample_rate as u32,
                 }).await;
             }
             DataConnectionEvent::PortNumber(tcp_port) => {
-                let info = if self.config.encode_opus {
-                    AudioStreamInfo::new(AudioFormat::Opus, 2u8, 48000u32, tcp_port)
+                let sample_rate = if let Some(client_info) = &self.client_info {
+                    assert!(client_info.native_sample_rate == 44100 ||
+                        client_info.native_sample_rate == 48000);
+                    client_info.native_sample_rate as u32
                 } else {
-                    AudioStreamInfo::new(AudioFormat::Pcm, 2u8, 44100u32, tcp_port)
+                    return
                 };
+
+                let format = if self.config.encode_opus {
+                    AudioFormat::Opus
+                } else {
+                    AudioFormat::Pcm
+                };
+
+                let info = AudioStreamInfo::new(format, 2u8, sample_rate, tcp_port);
 
                 self.connection_handle
                     .send_down(ServerMessage::PlayAudioStream(info))
