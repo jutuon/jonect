@@ -213,7 +213,7 @@ impl DeviceStateTask {
                 }).await;
             }
             DataConnectionEvent::PortNumber(tcp_port) => {
-                let sample_rate = if let Some(client_info) = &self.client_info {
+                let mut sample_rate = if let Some(client_info) = &self.client_info {
                     assert!(client_info.native_sample_rate == 44100 ||
                         client_info.native_sample_rate == 48000);
                     client_info.native_sample_rate as u32
@@ -222,6 +222,7 @@ impl DeviceStateTask {
                 };
 
                 let format = if self.config.encode_opus {
+                    sample_rate = 48000;
                     AudioFormat::Opus
                 } else {
                     AudioFormat::Pcm
