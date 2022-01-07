@@ -231,6 +231,9 @@ impl PAStreamManager {
 
                 encoding_buffer.clear();
 
+                let protocol_size: i32 = size.try_into().unwrap();
+
+                Self::handle_data(&protocol_size.to_be_bytes(), recording_buffer, send_handle)?;
                 Self::handle_data(&encoder_output_buffer[..size], recording_buffer, send_handle)?;
             }
         }
