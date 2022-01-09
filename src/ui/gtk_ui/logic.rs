@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+//! Connection to the server.
+
 use super::FromServerToUiSender;
 use std::{thread::JoinHandle, time::Duration};
 
@@ -21,6 +23,7 @@ use crate::{
     utils::{Connection, ConnectionEvent},
 };
 
+/// Server connection thread handle.
 pub struct ServerConnectionHandle {
     logic_thread: Option<JoinHandle<()>>,
     server_event_sender: mpsc::Sender<UiProtocolFromUiToServer>,
@@ -28,6 +31,7 @@ pub struct ServerConnectionHandle {
 }
 
 impl ServerConnectionHandle {
+    /// Create new `ServerConnectionHandle`.
     pub fn new(sender: FromServerToUiSender) -> Self {
         let (quit_sender, quit_receiver) = oneshot::channel();
         let (server_event_sender, receiver) =
@@ -48,26 +52,33 @@ impl ServerConnectionHandle {
         }
     }
 
+    /// Send UI protocol message to the server.
     pub fn send(&mut self, message: UiProtocolFromUiToServer) {
         // TODO: Do not queue messages if there is no connection to the server?
         // TODO: Clear message queue when new connection is established?
         self.server_event_sender.blocking_send(message).unwrap();
     }
 
+    /// Quit server connection thread. Blocks until thread is closed.
     pub fn quit(&mut self) {
         self.quit_sender.take().unwrap().send(()).unwrap();
         self.logic_thread.take().unwrap().join().unwrap();
     }
 }
 
+/// Reason why `ServerClient::handle_connection` quits.
 enum QuitReason {
+    /// UI thread requested quit.
     QuitRequest,
+    /// Server connection error.
     ConnectionError,
 }
 
+/// Connect to the server.
 struct ServerClient;
 
 impl ServerClient {
+    /// Connect to the server.
     pub async fn run(
         mut ui_sender: FromServerToUiSender,
         mut ui_receiver: mpsc::Receiver<UiProtocolFromUiToServer>,
@@ -106,6 +117,7 @@ impl ServerClient {
         }
     }
 
+    /// Handle server TCP connection.
     pub async fn handle_connection(
         stream: TcpStream,
         ui_sender: &mut FromServerToUiSender,

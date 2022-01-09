@@ -25,15 +25,20 @@ use std::{
     time::{Duration, Instant},
 };
 
+// TODO: Remove TestClient and move run method to AsyncClient.
+
+/// Start test client.
 pub struct TestClient {
     config: TestClientConfig,
 }
 
 impl TestClient {
+    /// New test client.
     pub fn new(config: TestClientConfig) -> Self {
         TestClient { config }
     }
 
+    /// Start test client. Blocks until test client is closed.
     pub fn run(self) {
         let rt = Runtime::new().unwrap();
 
@@ -43,15 +48,18 @@ impl TestClient {
     }
 }
 
+/// Test client logic.
 struct AsyncClient {
     config: TestClientConfig,
 }
 
 impl AsyncClient {
+    /// Create new `AsyncClient`.
     pub fn new(config: TestClientConfig) -> Self {
         Self { config }
     }
 
+    /// Run test client. Blocks untill test client is closed.
     pub async fn run(self) {
         let address = self
             .config
@@ -138,6 +146,7 @@ impl AsyncClient {
         connection_handle.quit().await;
     }
 
+    /// Data connection handler task.
     async fn handle_data_connection(
         mut quit_receiver: oneshot::Receiver<()>,
         mut connection: TcpStream,
@@ -172,6 +181,7 @@ impl AsyncClient {
                         }
                         Err(e) => {
                             eprintln!("Data connection error: {}", e);
+                            // TODO: Break after error?
                         }
                     }
                 }

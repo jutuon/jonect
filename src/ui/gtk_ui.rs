@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+//! GTK UI
+
 mod app;
 mod logic;
 
@@ -17,15 +19,16 @@ use gtk::gio::prelude::*;
 use gtk::glib::{MainContext, MainLoop, Sender};
 use gtk::{prelude::*, Label};
 
-//use futures::channel::mpsc::{self, Sender};
-
 use app::UiEvent;
 
+/// Error message for broken event channel.
 pub const SEND_ERROR: &str = "Error: UiEvent channel is broken.";
 
+/// UI main loop.
 pub struct GtkUi;
 
 impl Ui for GtkUi {
+    /// Run UI main loop.
     fn run(config: Config, settings: SettingsManager) {
         gtk::glib::set_program_name("Jonect".into());
         gtk::glib::set_application_name("Jonect");
@@ -63,27 +66,32 @@ impl Ui for GtkUi {
     }
 }
 
+/// Send events from UI connection task to the UI thread.
 pub struct FromServerToUiSender {
     sender: Sender<UiEvent>,
 }
 
 impl FromServerToUiSender {
+    /// Create new `FromServerToUiSender`.
     pub fn new(sender: Sender<UiEvent>) -> Self {
         Self { sender }
     }
 
+    /// Send UI protocol message to UI thread.
     pub fn send(&mut self, event: UiProtocolFromServerToUi) {
         self.sender
             .send(UiEvent::LogicEvent(event))
             .expect(SEND_ERROR);
     }
 
+    /// Send server disconnected message to UI thread.
     pub fn send_server_disconnected_message(&mut self) {
         self.sender
             .send(UiEvent::ServerDisconnected)
             .expect(SEND_ERROR);
     }
 
+    /// Send connect to server failed message to UI thread.
     pub fn send_connect_to_server_failed(&mut self) {
         self.sender
             .send(UiEvent::ConnectToServerFailed)
