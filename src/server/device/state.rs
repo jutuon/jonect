@@ -15,7 +15,7 @@ use crate::{
     server::{audio::AudioEvent, message_router::RouterSender},
     utils::{
         Connection, ConnectionEvent, ConnectionHandle, ConnectionId, QuitReceiver, QuitSender,
-        SendDownward, SendUpward,
+        SendDownward,
     },
 };
 
@@ -53,7 +53,6 @@ impl DeviceStateTaskHandle {
 pub struct DeviceStateTask {
     id: ConnectionId,
     address: SocketAddr,
-    play_stream: bool,
     connection_handle: ConnectionHandle<ServerMessage>,
     ping_state: Option<Instant>,
     audio_out: Option<DataConnectionHandle>,
@@ -89,7 +88,6 @@ impl DeviceStateTask {
 
         let device_task = Self {
             id,
-            play_stream: false,
             connection_handle,
             r_sender,
             ping_state: None,

@@ -218,7 +218,7 @@ impl PAStreamManager {
             return Err(StreamError::NotEnoughBytesForOneSample);
         }
 
-        let mut sample_iterator = data.chunks_exact(2);
+        let sample_iterator = data.chunks_exact(2);
 
         for bytes in sample_iterator {
             let sample = i16::from_le_bytes(bytes.try_into().unwrap());
@@ -229,7 +229,7 @@ impl PAStreamManager {
                 // for Opus at 48 kHz.
 
                 let size = encoder
-                    .encode(&encoding_buffer, encoder_output_buffer)
+                    .encode(encoding_buffer, encoder_output_buffer)
                     .map_err(StreamError::EncoderError)?;
 
                 encoding_buffer.clear();

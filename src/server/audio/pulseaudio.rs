@@ -53,7 +53,7 @@ impl AudioServer {
     /// Run audio server code. This method will block until the server is closed.
     ///
     /// This function will modify glib thread default MainContext.
-    pub fn run(mut self, init_ok_sender: oneshot::Sender<EventToAudioServerSender>) {
+    pub fn run(self, init_ok_sender: oneshot::Sender<EventToAudioServerSender>) {
         // Create context for this thread
         let mut context = MainContext::new();
         context.push_thread_default();

@@ -11,33 +11,27 @@ use std::{
 
 const SETTINGS_FILE_NAME: &str = "jonect_settings.toml";
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Settings {
     test: bool,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        Self { test: false }
-    }
-}
-
 impl Settings {
     fn save(&self) -> Result<(), SettingsError> {
-        let text = toml::to_string_pretty(self).map_err(SettingsError::SerializeTomlError)?;
+        let text = toml::to_string_pretty(self).map_err(SettingsError::SerializeToml)?;
 
         let mut settings_file =
-            File::create(SETTINGS_FILE_NAME).map_err(SettingsError::SaveError)?;
+            File::create(SETTINGS_FILE_NAME).map_err(SettingsError::Save)?;
 
         settings_file
             .write_all(text.as_bytes())
-            .map_err(SettingsError::SaveError)
+            .map_err(SettingsError::Save)
     }
 
     fn load() -> Result<Self, SettingsError> {
-        let data = fs::read(SETTINGS_FILE_NAME).map_err(SettingsError::ReadError)?;
+        let data = fs::read(SETTINGS_FILE_NAME).map_err(SettingsError::Read)?;
 
-        let settings: Settings = toml::from_slice(&data).map_err(SettingsError::ParseTomlError)?;
+        let settings: Settings = toml::from_slice(&data).map_err(SettingsError::ParseToml)?;
 
         Ok(settings)
     }
@@ -45,10 +39,10 @@ impl Settings {
 
 #[derive(Debug)]
 pub enum SettingsError {
-    ReadError(io::Error),
-    SaveError(io::Error),
-    ParseTomlError(toml::de::Error),
-    SerializeTomlError(toml::ser::Error),
+    Read(io::Error),
+    Save(io::Error),
+    ParseToml(toml::de::Error),
+    SerializeToml(toml::ser::Error),
 }
 
 pub struct SettingsManager {

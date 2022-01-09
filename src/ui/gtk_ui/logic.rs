@@ -33,7 +33,6 @@ impl ServerConnectionHandle {
         let (server_event_sender, receiver) =
             mpsc::channel::<UiProtocolFromUiToServer>(EVENT_CHANNEL_SIZE);
 
-        let s = server_event_sender.clone();
         let logic_thread = Some(std::thread::spawn(move || {
             let rt = Runtime::new().unwrap();
 

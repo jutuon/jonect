@@ -8,7 +8,7 @@ pub mod state;
 
 use tokio::{
     net::TcpListener,
-    sync::{mpsc, oneshot},
+    sync::{oneshot},
     task::JoinHandle,
 };
 
@@ -22,16 +22,12 @@ use std::{
 
 use crate::{
     config::{self, Config},
-    server::{audio::AudioEvent, device::data::DataConnectionEvent},
-    utils::{Connection, ConnectionEvent, ConnectionId, QuitReceiver, QuitSender},
+    utils::{ConnectionId, QuitReceiver, QuitSender},
 };
 
 use self::{
-    protocol::ClientMessage,
     state::{DeviceEvent, DeviceStateTask, DeviceStateTaskHandle},
 };
-
-use crate::config::EVENT_CHANNEL_SIZE;
 
 use super::{
     message_router::{MessageReceiver, RouterSender},
@@ -70,11 +66,8 @@ impl From<DeviceManagerInternalEvent> for DmEvent {
 
 #[derive(Debug)]
 pub enum DeviceManagerEvent {
-    Message(String),
     RunDeviceConnectionPing,
 }
-
-type DeviceId = String;
 
 pub struct DeviceManager {
     r_sender: RouterSender,
@@ -199,7 +192,6 @@ impl DeviceManager {
     pub async fn handle_dm_event(&mut self, event: DmEvent) {
         match event.value {
             DeviceManagerInternalEvent::PublicEvent(event) => match event {
-                DeviceManagerEvent::Message(_) => {}
                 DeviceManagerEvent::RunDeviceConnectionPing => {
                     for connection in self.connections.values_mut() {
                         connection.send(DeviceEvent::SendPing).await;
