@@ -7,7 +7,12 @@ pub mod device;
 pub mod message_router;
 pub mod ui;
 
-use crate::{config::Config, server::{audio::AudioManager, device::{DeviceManager}, message_router::{Router}, ui::UiConnectionManager}};
+use crate::{
+    config::Config,
+    server::{
+        audio::AudioManager, device::DeviceManager, message_router::Router, ui::UiConnectionManager,
+    },
+};
 
 use tokio::signal;
 
@@ -27,15 +32,21 @@ impl AsyncServer {
     pub async fn run(&mut self) {
         // Init message routing.
 
-        let (router, r_sender, device_manager_receiver, ui_receiver, audio_receiver) = Router::new();
+        let (router, r_sender, device_manager_receiver, ui_receiver, audio_receiver) =
+            Router::new();
         let (r_quit_sender, r_quit_receiver) = tokio::sync::oneshot::channel();
 
         let router_task_handle = tokio::spawn(router.run(r_quit_receiver));
 
         // Init other components.
 
-        let (audio_task_handle, audio_quit_sender) = AudioManager::task(r_sender.clone(), audio_receiver, self.config.clone());
-        let (dm_task_handle, dm_quit_sender) = DeviceManager::task(r_sender.clone(), device_manager_receiver, self.config.clone());
+        let (audio_task_handle, audio_quit_sender) =
+            AudioManager::task(r_sender.clone(), audio_receiver, self.config.clone());
+        let (dm_task_handle, dm_quit_sender) = DeviceManager::task(
+            r_sender.clone(),
+            device_manager_receiver,
+            self.config.clone(),
+        );
         let (ui_task_handle, ui_quit_sender) =
             UiConnectionManager::task(r_sender.clone(), ui_receiver);
 

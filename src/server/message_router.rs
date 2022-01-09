@@ -8,7 +8,11 @@ use tokio::sync::mpsc;
 
 use crate::{config, utils};
 
-use super::{audio::{AudioEvent}, device::{DeviceManagerEvent, DmEvent}, ui::UiEvent};
+use super::{
+    audio::AudioEvent,
+    device::{DeviceManagerEvent, DmEvent},
+    ui::UiEvent,
+};
 
 #[derive(Debug)]
 pub enum RouterEvent {

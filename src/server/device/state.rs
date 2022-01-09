@@ -2,13 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::{net::SocketAddr, time::Instant, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Instant};
 
-use tokio::{net::TcpStream, sync::{mpsc, oneshot}, task::JoinHandle};
+use tokio::{
+    net::TcpStream,
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 
-use crate::{config::{EVENT_CHANNEL_SIZE, Config}, server::{audio::AudioEvent, message_router::RouterSender}, utils::{Connection, ConnectionEvent, ConnectionHandle, ConnectionId, QuitReceiver, QuitSender, SendDownward, SendUpward}};
+use crate::{
+    config::{Config, EVENT_CHANNEL_SIZE},
+    server::{audio::AudioEvent, message_router::RouterSender},
+    utils::{
+        Connection, ConnectionEvent, ConnectionHandle, ConnectionId, QuitReceiver, QuitSender,
+        SendDownward, SendUpward,
+    },
+};
 
-use super::{DeviceManagerInternalEvent, data::{DataConnection, DataConnectionEvent, DataConnectionHandle}, protocol::{AudioFormat, AudioStreamInfo, ClientMessage, ServerInfo, ServerMessage, ClientInfo}};
+use super::{
+    data::{DataConnection, DataConnectionEvent, DataConnectionHandle},
+    protocol::{
+        AudioFormat, AudioStreamInfo, ClientInfo, ClientMessage, ServerInfo, ServerMessage,
+    },
+    DeviceManagerInternalEvent,
+};
 
 #[derive(Debug)]
 pub enum DeviceEvent {
@@ -60,18 +77,13 @@ impl DeviceStateTask {
             mpsc::channel::<ConnectionEvent<ClientMessage>>(EVENT_CHANNEL_SIZE);
 
         let (read_half, write_half) = stream.into_split();
-        let connection_handle: ConnectionHandle<ServerMessage> = Connection::spawn_connection_task(
-            id,
-            read_half,
-            write_half,
-            connection_sender.into(),
-        );
+        let connection_handle: ConnectionHandle<ServerMessage> =
+            Connection::spawn_connection_task(id, read_half, write_half, connection_sender.into());
 
         let message = ServerMessage::ServerInfo(ServerInfo::new("Test server"));
         connection_handle.send_down(message).await;
 
-        let (event_sender, event_receiver) =
-            mpsc::channel::<DeviceEvent>(EVENT_CHANNEL_SIZE);
+        let (event_sender, event_receiver) = mpsc::channel::<DeviceEvent>(EVENT_CHANNEL_SIZE);
 
         let (quit_sender, quit_receiver) = oneshot::channel();
 
@@ -147,9 +159,11 @@ impl DeviceStateTask {
         self.connection_handle.quit().await;
 
         if let Some(WaitQuit) = wait_quit {
-            self.r_sender.send_dm_internal_event(
-                DeviceManagerInternalEvent::RemoveConnection(self.id).into()
-            ).await;
+            self.r_sender
+                .send_dm_internal_event(
+                    DeviceManagerInternalEvent::RemoveConnection(self.id).into(),
+                )
+                .await;
 
             quit_receiver.await.unwrap()
         }
@@ -204,21 +218,22 @@ impl DeviceStateTask {
     pub async fn handle_data_connection_message(&mut self, message: DataConnectionEvent) {
         match message {
             DataConnectionEvent::NewConnection(handle) => {
-                self.r_sender.send_audio_server_event(AudioEvent::StartRecording {
-                    send_handle: handle,
-                    sample_rate: self.client_info
-                        .as_ref()
-                        .unwrap()
-                        .native_sample_rate as u32,
-                }).await;
+                self.r_sender
+                    .send_audio_server_event(AudioEvent::StartRecording {
+                        send_handle: handle,
+                        sample_rate: self.client_info.as_ref().unwrap().native_sample_rate as u32,
+                    })
+                    .await;
             }
             DataConnectionEvent::PortNumber(tcp_port) => {
                 let mut sample_rate = if let Some(client_info) = &self.client_info {
-                    assert!(client_info.native_sample_rate == 44100 ||
-                        client_info.native_sample_rate == 48000);
+                    assert!(
+                        client_info.native_sample_rate == 44100
+                            || client_info.native_sample_rate == 48000
+                    );
                     client_info.native_sample_rate as u32
                 } else {
-                    return
+                    return;
                 };
 
                 let format = if self.config.encode_opus {

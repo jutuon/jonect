@@ -2,10 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-
 use std::{any::Any, collections::VecDeque};
 
-use gtk::glib::{MainContext};
+use gtk::glib::MainContext;
 
 use pulse::{
     callbacks::ListResult,
@@ -14,10 +13,12 @@ use pulse::{
 };
 use pulse_glib::Mainloop;
 
-use super::{AudioEvent, EventToAudioServerSender, stream::{PARecordingStreamEvent, PAStreamManager}};
+use super::{
+    stream::{PARecordingStreamEvent, PAStreamManager},
+    AudioEvent, EventToAudioServerSender,
+};
 
-use crate::{server::{audio::pulseaudio::AudioServerEvent, device::data::TcpSendHandle, }};
-
+use crate::server::{audio::pulseaudio::AudioServerEvent, device::data::TcpSendHandle};
 
 #[derive(Debug)]
 pub enum PAEvent {
@@ -170,7 +171,10 @@ impl PAState {
             );
         } else {
             self.wait_context_event_queue
-                .push_back(AudioServerEvent::AudioEvent(AudioEvent::StartRecording { send_handle, sample_rate }));
+                .push_back(AudioServerEvent::AudioEvent(AudioEvent::StartRecording {
+                    send_handle,
+                    sample_rate,
+                }));
         }
     }
 

@@ -4,7 +4,7 @@
 
 mod pulseaudio;
 
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
@@ -22,9 +22,11 @@ pub use pulseaudio::EventToAudioServerSender;
 pub enum AudioEvent {
     Message(String),
     StopRecording,
-    StartRecording { send_handle: TcpSendHandle, sample_rate: u32 },
+    StartRecording {
+        send_handle: TcpSendHandle,
+        sample_rate: u32,
+    },
 }
-
 
 pub struct AudioManager {
     r_sender: RouterSender,

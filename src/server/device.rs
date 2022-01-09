@@ -6,18 +6,30 @@ pub mod data;
 pub mod protocol;
 pub mod state;
 
-use tokio::{net::TcpListener, sync::{mpsc, oneshot}, task::JoinHandle};
+use tokio::{
+    net::TcpListener,
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 
 use std::{
     collections::HashMap,
     fmt::Debug,
     io::{self},
-    time::Duration, sync::Arc,
+    sync::Arc,
+    time::Duration,
 };
 
-use crate::{config::{self, Config}, server::{audio::AudioEvent, device::data::DataConnectionEvent}, utils::{Connection, ConnectionEvent, ConnectionId, QuitReceiver, QuitSender}};
+use crate::{
+    config::{self, Config},
+    server::{audio::AudioEvent, device::data::DataConnectionEvent},
+    utils::{Connection, ConnectionEvent, ConnectionId, QuitReceiver, QuitSender},
+};
 
-use self::{protocol::ClientMessage, state::{DeviceEvent, DeviceStateTask, DeviceStateTaskHandle}};
+use self::{
+    protocol::ClientMessage,
+    state::{DeviceEvent, DeviceStateTask, DeviceStateTaskHandle},
+};
 
 use crate::config::EVENT_CHANNEL_SIZE;
 
@@ -46,15 +58,13 @@ pub struct DmEvent {
 impl From<DeviceManagerEvent> for DmEvent {
     fn from(e: DeviceManagerEvent) -> Self {
         Self {
-            value: DeviceManagerInternalEvent::PublicEvent(e)
+            value: DeviceManagerInternalEvent::PublicEvent(e),
         }
     }
 }
 impl From<DeviceManagerInternalEvent> for DmEvent {
     fn from(value: DeviceManagerInternalEvent) -> Self {
-        Self {
-            value
-        }
+        Self { value }
     }
 }
 
@@ -64,15 +74,13 @@ pub enum DeviceManagerEvent {
     RunDeviceConnectionPing,
 }
 
-
-
 type DeviceId = String;
 
 pub struct DeviceManager {
     r_sender: RouterSender,
     receiver: MessageReceiver<DmEvent>,
     next_connection_id: u64,
-    connections: HashMap::<ConnectionId, DeviceStateTaskHandle>,
+    connections: HashMap<ConnectionId, DeviceStateTaskHandle>,
     tcp_listener_enabled: bool,
     config: Arc<Config>,
 }
@@ -82,7 +90,7 @@ impl DeviceManager {
         r_sender: RouterSender,
         receiver: MessageReceiver<DmEvent>,
         config: Arc<Config>,
-    ) -> (JoinHandle<()>, QuitSender)  {
+    ) -> (JoinHandle<()>, QuitSender) {
         let (quit_sender, quit_receiver) = oneshot::channel();
 
         let dm = Self {
@@ -154,8 +162,8 @@ impl DeviceManager {
 
     pub async fn handle_tcp_listener_accept(
         &mut self,
-        result: std::io::Result<(tokio::net::TcpStream, std::net::SocketAddr)
-    >) {
+        result: std::io::Result<(tokio::net::TcpStream, std::net::SocketAddr)>,
+    ) {
         match result {
             Ok((stream, address)) => {
                 let id = self.next_connection_id;
@@ -167,7 +175,14 @@ impl DeviceManager {
                     }
                 };
 
-                let device_state = DeviceStateTask::task(id, stream, address, self.r_sender.clone(), self.config.clone()).await;
+                let device_state = DeviceStateTask::task(
+                    id,
+                    stream,
+                    address,
+                    self.r_sender.clone(),
+                    self.config.clone(),
+                )
+                .await;
 
                 self.connections.insert(id, device_state);
             }
@@ -181,23 +196,16 @@ impl DeviceManager {
         }
     }
 
-    pub async fn handle_dm_event(
-        &mut self,
-        event: DmEvent,
-    ) {
+    pub async fn handle_dm_event(&mut self, event: DmEvent) {
         match event.value {
-            DeviceManagerInternalEvent::PublicEvent(event) => {
-                match event {
-                    DeviceManagerEvent::Message(_) => {
-
-                    }
-                    DeviceManagerEvent::RunDeviceConnectionPing => {
-                        for connection in self.connections.values_mut() {
-                            connection.send(DeviceEvent::SendPing).await;
-                        }
+            DeviceManagerInternalEvent::PublicEvent(event) => match event {
+                DeviceManagerEvent::Message(_) => {}
+                DeviceManagerEvent::RunDeviceConnectionPing => {
+                    for connection in self.connections.values_mut() {
+                        connection.send(DeviceEvent::SendPing).await;
                     }
                 }
-            }
+            },
             DeviceManagerInternalEvent::RemoveConnection(id) => {
                 self.connections.remove(&id).unwrap().quit().await
             }

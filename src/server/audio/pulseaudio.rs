@@ -4,25 +4,23 @@
 
 //! PulseAudio audio code
 
-mod stream;
 mod state;
+mod stream;
 
-use std::{thread::JoinHandle, sync::Arc};
+use std::{sync::Arc, thread::JoinHandle};
 
 use gtk::glib::{MainContext, MainLoop, Sender};
 
-use tokio::sync::{oneshot};
+use tokio::sync::oneshot;
 
-use self::{state::{PAEvent, PAState}, stream::PARecordingStreamEvent};
+use self::{
+    state::{PAEvent, PAState},
+    stream::PARecordingStreamEvent,
+};
 
 use super::AudioEvent;
 
-use crate::{
-    config::Config,
-    server::{
-        message_router::{RouterSender},
-    },
-};
+use crate::{config::Config, server::message_router::RouterSender};
 
 #[derive(Debug)]
 pub enum AudioServerEvent {
@@ -31,7 +29,6 @@ pub enum AudioServerEvent {
     PAEvent(PAEvent),
     PAQuitReady,
 }
-
 
 /// AudioServer which handles connection to the PulseAudio.
 ///
@@ -43,10 +40,7 @@ pub struct AudioServer {
 }
 
 impl AudioServer {
-    pub fn new(
-        server_event_sender: RouterSender,
-        config: std::sync::Arc<Config>,
-    ) -> Self {
+    pub fn new(server_event_sender: RouterSender, config: std::sync::Arc<Config>) -> Self {
         Self {
             server_event_sender,
             config,
@@ -83,22 +77,23 @@ impl AudioServer {
                 AudioServerEvent::RequestQuit => {
                     pa_state.request_quit();
                 }
-                AudioServerEvent::AudioEvent(event) => {
-                    match event {
-                        AudioEvent::StartRecording { send_handle, sample_rate } => {
-                            pa_state.start_recording(
-                                self.config.pa_source_name.clone(),
-                                send_handle,
-                                self.config.encode_opus,
-                                sample_rate,
-                            );
-                        }
-                        AudioEvent::StopRecording => {
-                            pa_state.stop_recording();
-                        }
-                        AudioEvent::Message(_) => (),
+                AudioServerEvent::AudioEvent(event) => match event {
+                    AudioEvent::StartRecording {
+                        send_handle,
+                        sample_rate,
+                    } => {
+                        pa_state.start_recording(
+                            self.config.pa_source_name.clone(),
+                            send_handle,
+                            self.config.encode_opus,
+                            sample_rate,
+                        );
                     }
-                }
+                    AudioEvent::StopRecording => {
+                        pa_state.stop_recording();
+                    }
+                    AudioEvent::Message(_) => (),
+                },
                 AudioServerEvent::PAEvent(event) => {
                     pa_state.handle_pa_event(event);
                 }
@@ -138,7 +133,6 @@ impl EventToAudioServerSender {
     }
 }
 
-
 pub struct PulseAudioThread {
     audio_thread: Option<JoinHandle<()>>,
     sender: EventToAudioServerSender,
@@ -154,7 +148,10 @@ impl PulseAudioThread {
 
         let sender = init_ok_receiver.await.unwrap();
 
-        Self { audio_thread, sender }
+        Self {
+            audio_thread,
+            sender,
+        }
     }
 
     pub fn quit(&mut self) {

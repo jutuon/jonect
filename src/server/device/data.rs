@@ -147,9 +147,7 @@ impl DataConnection {
             Ok(listener) => listener,
             Err(e) => {
                 let e = DataConnectionEvent::TcpListenerBindError(e);
-                self.sender
-                    .send_up(e.into())
-                    .await;
+                self.sender.send_up(e.into()).await;
                 self.quit_receiver.await.unwrap();
                 return;
             }
@@ -158,15 +156,11 @@ impl DataConnection {
         match audio_out.local_addr() {
             Ok(address) => {
                 let event = DataConnectionEvent::PortNumber(address.port());
-                self.sender
-                    .send_up(event.into())
-                    .await;
+                self.sender.send_up(event.into()).await;
             }
             Err(e) => {
                 let e = DataConnectionEvent::GetPortNumberError(e);
-                self.sender
-                    .send_up(e.into())
-                    .await;
+                self.sender.send_up(e.into()).await;
                 self.quit_receiver.await.unwrap();
                 return;
             }

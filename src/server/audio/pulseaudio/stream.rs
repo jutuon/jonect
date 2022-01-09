@@ -2,18 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::{io::{ErrorKind, Write}, convert::TryInto};
+use std::{
+    convert::TryInto,
+    io::{ErrorKind, Write},
+};
 
 use audiopus::{coder::Encoder, SampleRate};
 use bytes::{Buf, BytesMut};
 
-use pulse::{
-    context::{Context},
-    sample::Spec,
-    stream::Stream, def::BufferAttr,
-};
+use pulse::{context::Context, def::BufferAttr, sample::Spec, stream::Stream};
 
-use crate::{server::{audio::pulseaudio::state::PAEvent, device::data::TcpSendHandle}};
+use crate::server::{audio::pulseaudio::state::PAEvent, device::data::TcpSendHandle};
 
 use super::EventToAudioServerSender;
 
@@ -73,11 +72,14 @@ impl PAStreamManager {
         sample_rate: u32,
     ) {
         let rate = if encode_opus {
-            self.encoder = Some(Encoder::new(
-                SampleRate::Hz48000,
-                audiopus::Channels::Stereo,
-                audiopus::Application::Audio,
-            ).unwrap());
+            self.encoder = Some(
+                Encoder::new(
+                    SampleRate::Hz48000,
+                    audiopus::Channels::Stereo,
+                    audiopus::Application::Audio,
+                )
+                .unwrap(),
+            );
             self.encoder_buffer.clear();
             48000
         } else {
@@ -102,7 +104,7 @@ impl PAStreamManager {
             minreq: u32::MAX,
             // channels * sample byte count * sample count
             // At 44100 Hz one millisecond is about 44,1 samples.
-            fragsize: 2*2*32,
+            fragsize: 2 * 2 * 32,
         };
 
         stream
@@ -226,7 +228,8 @@ impl PAStreamManager {
                 // 240 is 120 samples per channel. That is minimum frame size
                 // for Opus at 48 kHz.
 
-                let size = encoder.encode(&encoding_buffer, encoder_output_buffer)
+                let size = encoder
+                    .encode(&encoding_buffer, encoder_output_buffer)
                     .map_err(StreamError::EncoderError)?;
 
                 encoding_buffer.clear();
@@ -234,7 +237,11 @@ impl PAStreamManager {
                 let protocol_size: i32 = size.try_into().unwrap();
 
                 Self::handle_data(&protocol_size.to_be_bytes(), recording_buffer, send_handle)?;
-                Self::handle_data(&encoder_output_buffer[..size], recording_buffer, send_handle)?;
+                Self::handle_data(
+                    &encoder_output_buffer[..size],
+                    recording_buffer,
+                    send_handle,
+                )?;
             }
         }
 
@@ -264,7 +271,7 @@ impl PAStreamManager {
                             &mut self.encoder_output_buffer,
                             encoder,
                             &mut self.recording_buffer,
-                            send_handle
+                            send_handle,
                         )
                     } else {
                         Self::handle_data(data, &mut self.recording_buffer, send_handle)
