@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+//! Server code.
+
 pub mod audio;
 pub mod device;
 pub mod message_router;
@@ -18,6 +20,7 @@ use tokio::signal;
 
 use tokio::runtime::Runtime;
 
+/// Async server code.
 pub struct AsyncServer {
     config: std::sync::Arc<Config>,
 }
@@ -29,6 +32,7 @@ impl AsyncServer {
         }
     }
 
+    /// Future for main server task.
     pub async fn run(&mut self) {
         // Init message routing.
 
@@ -84,9 +88,11 @@ impl AsyncServer {
     }
 }
 
+/// Start server.
 pub struct Server;
 
 impl Server {
+    /// Starts server. Blocks until server is closed.
     pub fn run(config: Config) {
         let rt = match Runtime::new() {
             Ok(rt) => rt,

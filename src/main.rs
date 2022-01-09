@@ -15,6 +15,7 @@ use crate::{client::TestClient, server::Server};
 
 use ui::{gtk_ui::GtkUi, Ui};
 
+/// Main function. Program starts here.
 fn main() {
     let config = config::parse_cmd_args();
 
@@ -23,6 +24,7 @@ fn main() {
         process::exit(0);
     }
 
+    // Run test client mode.
     if let Some(config) = config.test_client_config {
         TestClient::new(config).run();
         return;
@@ -38,10 +40,12 @@ fn main() {
 
     println!("{:#?}", settings.get());
 
+    // Run GUI mode.
     if config.gui.is_some() {
         GtkUi::run(config, settings);
         return;
     }
 
+    // Run server mode.
     Server::run(config);
 }

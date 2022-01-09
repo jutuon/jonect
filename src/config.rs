@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+//! App configuration constants and command line argument parsing.
+
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use clap::{App, Arg, SubCommand};
 
+/// Size for event channel buffers.
 pub const EVENT_CHANNEL_SIZE: usize = 32;
 
 pub const DEVICE_SOCKET_ADDRESS: &str = "0.0.0.0:8080";
