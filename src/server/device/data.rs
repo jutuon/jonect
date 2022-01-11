@@ -19,6 +19,8 @@ use crate::{
 
 use super::state::DeviceEvent;
 
+/// Send data to connected device. Writing will be nonblocking. Drop this to close
+/// `TcpSendConnection`.
 #[derive(Debug)]
 pub struct TcpSendHandle {
     tcp_stream: std::net::TcpStream,
@@ -35,12 +37,14 @@ impl std::io::Write for TcpSendHandle {
     }
 }
 
+/// Handle to `TcpSendHandle`.
 #[derive(Debug)]
 pub struct TcpSendConnection {
     shutdown_watch_receiver: mpsc::Receiver<()>,
 }
 
 impl TcpSendConnection {
+    /// Create `TcpSendConnection` and `TcpSendHandle`.
     pub fn new(tcp_stream: std::net::TcpStream) -> Result<(Self, TcpSendHandle), std::io::Error> {
         tcp_stream.set_nonblocking(true)?;
         let (_shutdown_watch, shutdown_watch_receiver) = mpsc::channel::<()>(1);
@@ -57,18 +61,24 @@ impl TcpSendConnection {
         Ok((connection, handle))
     }
 
+    /// Wait until `TcpSendHandle` is dropped.
     pub async fn wait_quit(mut self) {
+        // TODO: Shutdown the socket here?
+
         let _ = self.shutdown_watch_receiver.recv().await;
     }
 }
 
+/// Events which `DataConnection` can send.
 #[derive(Debug)]
 pub enum DataConnectionEvent {
     TcpListenerBindError(std::io::Error),
     GetPortNumberError(std::io::Error),
     AcceptError(std::io::Error),
     SendConnectionError(std::io::Error),
+    /// `DataConnection` is now waiting a new connection to this port.
     PortNumber(u16),
+    /// Device is now connected. Use `TcpSendHandle` to send data to the device.
     NewConnection(TcpSendHandle),
 }
 
@@ -78,11 +88,13 @@ impl From<DataConnectionEvent> for DeviceEvent {
     }
 }
 
+/// Event from `Device` to `DataConnection`.
 #[derive(Debug)]
 pub enum DataConnectionEventFromDevice {
     Test,
 }
 
+/// Handle to `DataConnection` task.
 pub struct DataConnectionHandle {
     command_connection_id: ConnectionId,
     task_handle: JoinHandle<()>,
@@ -95,16 +107,19 @@ impl DataConnectionHandle {
         self.command_connection_id
     }
 
+    /// Send quit request to `DataConnection` and wait untill it is closed.
     pub async fn quit(self) {
         self.quit_sender.send(()).unwrap();
         self.task_handle.await.unwrap();
     }
 
+    /// Send `DataConnectionEventFromDevice`.
     pub async fn send_down(&self, message: DataConnectionEventFromDevice) {
         self.event_sender.send_down(message).await
     }
 }
 
+/// Task for waiting data connection from the device.
 pub struct DataConnection {
     command_connection_id: ConnectionId,
     sender: SendUpward<DeviceEvent>,
@@ -115,6 +130,7 @@ pub struct DataConnection {
 }
 
 impl DataConnection {
+    /// Start new `DataConnection` task.
     pub fn task(
         command_connection_id: ConnectionId,
         sender: SendUpward<DeviceEvent>,
@@ -142,6 +158,7 @@ impl DataConnection {
         }
     }
 
+    // Run `DataConnection` logic.
     pub async fn run(mut self) {
         let audio_out = match TcpListener::bind(config::AUDIO_DATA_SOCKET_ADDRESS).await {
             Ok(listener) => listener,

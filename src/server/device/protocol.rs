@@ -18,6 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
+/// First message from server to the client.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
     pub version: String,
@@ -33,6 +34,7 @@ impl ServerInfo {
     }
 }
 
+/// Available audio stream formats.
 pub enum AudioFormat {
     // 16-bit little endian PCM samples.
     Pcm,
@@ -41,6 +43,7 @@ pub enum AudioFormat {
 }
 
 impl AudioFormat {
+    /// Convert to string which is used in the JSON message.
     pub fn as_json_value(&self) -> &'static str {
         match self {
             Self::Pcm => "pcm-s16le",
@@ -49,6 +52,7 @@ impl AudioFormat {
     }
 }
 
+/// Server informs the client about available audio stream.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AudioStreamInfo {
     /// Possible values:
@@ -56,7 +60,13 @@ pub struct AudioStreamInfo {
     /// * opus - Opus encoded audio stream.
     format: String,
     channels: u8,
+    /// Sample rate.
+    ///
+    /// Possible values:
+    /// * 44100
+    /// * 48000
     rate: u32,
+    /// Server TCP port for the audio stream.
     pub port: u16,
 }
 
@@ -98,10 +108,13 @@ pub enum ClientMessage {
     AudioStreamPlayError(String),
 }
 
+/// First message from the client to the server.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientInfo {
     pub version: String,
     pub id: String,
+    /// Client's native sample rate. Server should send audio data with same
+    /// sample rate to reduce audio latency.
     pub native_sample_rate: i32,
 }
 

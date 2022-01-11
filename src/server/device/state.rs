@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+//! Connected device's state.
+
 use std::{net::SocketAddr, sync::Arc, time::Instant};
 
 use tokio::{
@@ -27,12 +29,14 @@ use super::{
     DeviceManagerInternalEvent,
 };
 
+/// Event to `DeviceStateTask`.
 #[derive(Debug)]
 pub enum DeviceEvent {
     DataConnection(DataConnectionEvent),
     SendPing,
 }
 
+/// Handle to `DeviceStateTask`.
 pub struct DeviceStateTaskHandle {
     task_handle: JoinHandle<()>,
     event_sender: SendDownward<DeviceEvent>,
@@ -40,16 +44,19 @@ pub struct DeviceStateTaskHandle {
 }
 
 impl DeviceStateTaskHandle {
+    /// Send quit request to the `DeviceStateTask` and waits until it is closed.
     pub async fn quit(self) {
         self.quit_sender.send(()).unwrap();
         self.task_handle.await.unwrap();
     }
 
+    /// Send `DeviceEvent` to the `DeviceStateTask`.
     pub async fn send(&mut self, event: DeviceEvent) {
         self.event_sender.send_down(event).await;
     }
 }
 
+/// Logic for handling one connected device.
 pub struct DeviceStateTask {
     id: ConnectionId,
     address: SocketAddr,
@@ -65,6 +72,7 @@ pub struct DeviceStateTask {
 }
 
 impl DeviceStateTask {
+    /// Start new `DeviceStateTask`.
     pub async fn task(
         id: ConnectionId,
         stream: TcpStream,
@@ -109,10 +117,11 @@ impl DeviceStateTask {
         }
     }
 
+    /// Run `DeviceStateTask`.
     pub async fn run(mut self, mut quit_receiver: QuitReceiver) {
         struct WaitQuit;
 
-        let wait_quit = loop {
+        let wait_quit: Option<WaitQuit> = loop {
             tokio::select! {
                 result = &mut quit_receiver => {
                     result.unwrap();
@@ -167,6 +176,7 @@ impl DeviceStateTask {
         }
     }
 
+    /// Handle `DeviceEvent`.
     async fn handle_device_event(&mut self, event: DeviceEvent) {
         match event {
             DeviceEvent::DataConnection(event) => {
@@ -181,6 +191,7 @@ impl DeviceStateTask {
         }
     }
 
+    /// Handle `ClientMessage`.
     async fn handle_client_message(&mut self, message: ClientMessage) {
         match message {
             ClientMessage::ClientInfo(info) => {
@@ -213,6 +224,7 @@ impl DeviceStateTask {
         }
     }
 
+    /// Handle `DataConnectionEvent`.
     pub async fn handle_data_connection_message(&mut self, message: DataConnectionEvent) {
         match message {
             DataConnectionEvent::NewConnection(handle) => {
