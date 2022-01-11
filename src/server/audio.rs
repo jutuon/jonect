@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+//! Audio code.
+
 mod pulseaudio;
 
 use std::sync::Arc;
@@ -18,6 +20,7 @@ use crate::utils::QuitSender;
 
 pub use pulseaudio::EventToAudioServerSender;
 
+/// Event to `AudioManager`.
 #[derive(Debug)]
 pub enum AudioEvent {
     Message(String),
@@ -28,6 +31,7 @@ pub enum AudioEvent {
     },
 }
 
+/// Handle audio recording requests.
 pub struct AudioManager {
     r_sender: RouterSender,
     quit_receiver: QuitReceiver,
@@ -36,6 +40,7 @@ pub struct AudioManager {
 }
 
 impl AudioManager {
+    /// Start new `AudioManager` task.
     pub fn task(
         r_sender: RouterSender,
         audio_receiver: MessageReceiver<AudioEvent>,
@@ -59,6 +64,7 @@ impl AudioManager {
         (handle, quit_sender)
     }
 
+    /// Run `AudioManager` logic.
     async fn run(mut self) {
         let mut at = PulseAudioThread::start(self.r_sender, self.config).await;
 

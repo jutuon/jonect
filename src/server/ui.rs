@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! User interface communication protocol.
+//! User interface communication protocol and server code for it.
 
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -22,27 +22,32 @@ use super::{
     message_router::{MessageReceiver, RouterSender},
 };
 
+/// UI message from server to UI.
 #[derive(Debug, Deserialize, Serialize)]
 pub enum UiProtocolFromServerToUi {
     Message(String),
 }
 
+/// UI message from UI to server.
 #[derive(Debug, Deserialize, Serialize)]
 pub enum UiProtocolFromUiToServer {
     NotificationTest,
     RunDeviceConnectionPing,
 }
 
+/// Event to `UiConnectionManager`.
 #[derive(Debug)]
 pub enum UiEvent {
     TcpSupportDisabledBecauseOfError(TcpSupportError),
 }
 
+/// Quit reason for `UiConnectionManager::handle_connection`.
 enum QuitReason {
     QuitRequest,
     ConnectionError,
 }
 
+/// Logic for handling new UI connections.
 pub struct UiConnectionManager {
     server_sender: RouterSender,
     ui_receiver: MessageReceiver<UiEvent>,
@@ -50,6 +55,7 @@ pub struct UiConnectionManager {
 }
 
 impl UiConnectionManager {
+    /// Start new `UiConnectionManager` task.
     pub fn task(
         server_sender: RouterSender,
         ui_receiver: MessageReceiver<UiEvent>,
@@ -71,6 +77,7 @@ impl UiConnectionManager {
         (handle, quit_sender)
     }
 
+    /// Run `UiConnectionManager` logic.
     async fn run(mut self) {
         let listener = match TcpListener::bind(config::UI_SOCKET_ADDRESS).await {
             Ok(listener) => listener,
@@ -107,6 +114,7 @@ impl UiConnectionManager {
         }
     }
 
+    /// Handle new UI connection.
     async fn handle_connection(
         mut server_sender: &mut RouterSender,
         ui_receiver: &mut MessageReceiver<UiEvent>,

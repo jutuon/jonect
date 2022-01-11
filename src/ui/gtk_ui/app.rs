@@ -12,6 +12,7 @@ use gtk::{prelude::*, Button, Label, Window};
 
 use super::SEND_ERROR;
 
+/// Events which UI thread receives.
 #[derive(Debug)]
 pub enum UiEvent {
     ButtonClicked(&'static str),
@@ -22,6 +23,7 @@ pub enum UiEvent {
     Quit,
 }
 
+/// UI logic code.
 pub struct App {
     sender: Sender<UiEvent>,
     handle: ServerConnectionHandle,
@@ -30,6 +32,7 @@ pub struct App {
 }
 
 impl App {
+    /// Create new `App`.
     pub fn new(sender: Sender<UiEvent>, handle: ServerConnectionHandle) -> Self {
         let window = Window::new(gtk::WindowType::Toplevel);
         window.set_title("Jonect");
@@ -72,11 +75,13 @@ impl App {
         }
     }
 
+    /// Handler for `UiEvent::CloseMainWindow`.
     pub fn handle_close_main_window(&mut self) {
         self.main_window.close();
         self.sender.send(UiEvent::Quit).expect(SEND_ERROR);
     }
 
+    /// Handler for UI protocol messages from server.
     pub fn handle_logic_event(&mut self, e: UiProtocolFromServerToUi) {
         match e {
             UiProtocolFromServerToUi::Message(s) => {
@@ -86,14 +91,17 @@ impl App {
         }
     }
 
+    /// Handler for `UiEvent::ConnectToServerFailed`.
     pub fn handle_connect_to_server_failed(&mut self) {
         eprintln!("Connecting to the server failed.");
     }
 
+    /// Handler for `UiEvent::ServerDisconnected`.
     pub fn handle_server_disconnect(&mut self) {
         eprintln!("Server disconnected.")
     }
 
+    /// Handler for `UiEvent::ButtonClicked(id)`.
     pub fn handle_button(&mut self, id: &'static str) {
         match id {
             "test" => {
@@ -107,6 +115,8 @@ impl App {
         }
     }
 
+    /// Quit app logic background components. Blocks until components are
+    /// closed.
     pub fn quit(&mut self) {
         self.handle.quit();
     }

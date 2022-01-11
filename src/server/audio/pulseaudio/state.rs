@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+//! Store state related to PulseAudio.
+
 use std::{any::Any, collections::VecDeque};
 
 use gtk::glib::MainContext;
@@ -20,6 +22,7 @@ use super::{
 
 use crate::server::{audio::pulseaudio::AudioServerEvent, device::data::TcpSendHandle};
 
+/// PulseAudio code events.
 #[derive(Debug)]
 pub enum PAEvent {
     ContextStateChanged,
@@ -32,6 +35,7 @@ pub enum PAEvent {
     RecordingStreamEvent(PARecordingStreamEvent),
 }
 
+/// PulseAudio state.
 pub struct PAState {
     // Make sure that Mainloop is not dropped when audio code is running.
     // This is probably not required, but it adds some additional
@@ -42,10 +46,12 @@ pub struct PAState {
     sender: EventToAudioServerSender,
     current_operation: Option<Box<dyn Any>>,
     stream_manager: PAStreamManager,
+    /// Buffer for events received before PulseAudio Context is ready.
     wait_context_event_queue: VecDeque<AudioServerEvent>,
 }
 
 impl PAState {
+    /// Connect to PulseAudio.
     pub fn new(glib_context: &mut MainContext, sender: EventToAudioServerSender) -> Self {
         let main_loop = pulse_glib::Mainloop::new(Some(glib_context)).unwrap();
 
@@ -73,8 +79,12 @@ impl PAState {
         }
     }
 
+    /// Get monitor information as `PAEvent::SinkInfo` events.
+    ///
+    /// Starts new `Operation`.
     fn list_pa_monitors(&mut self) {
         // TODO: Check that Context is ready?
+        // TODO: Check that there is no operation running.
         let mut s = self.sender.clone();
         let operation = self.context.introspect().get_sink_info_list(move |list| {
             match list {
@@ -143,6 +153,7 @@ impl PAState {
                 );
             }
             PAEvent::OperationCompleted => {
+                // Current operation is completed so remove it.
                 self.current_operation.take();
             }
             PAEvent::RecordingStreamEvent(event) => {
@@ -154,6 +165,7 @@ impl PAState {
         }
     }
 
+    /// Start recording when context is ready.
     pub fn start_recording(
         &mut self,
         source_name: Option<String>,
@@ -178,10 +190,12 @@ impl PAState {
         }
     }
 
+    /// Stop recording.
     pub fn stop_recording(&mut self) {
         self.stream_manager.stop_recording();
     }
 
+    /// Stop recording.
     pub fn request_quit(&mut self) {
         self.stream_manager.request_quit();
     }

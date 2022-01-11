@@ -14,11 +14,13 @@ use super::{
     ui::UiEvent,
 };
 
+// Event to `Router`.
 #[derive(Debug)]
 pub enum RouterEvent {
     SendQuitRequest,
 }
 
+/// Message to be routed.
 #[derive(Debug)]
 pub enum RouterMessage {
     AudioServer(AudioEvent),
@@ -27,6 +29,7 @@ pub enum RouterMessage {
     Router(RouterEvent),
 }
 
+/// Router for sending messages to different components.
 #[derive(Debug)]
 pub struct Router {
     r_receiver: mpsc::Receiver<RouterMessage>,
@@ -36,6 +39,7 @@ pub struct Router {
 }
 
 impl Router {
+    /// Create new `Router`.
     pub fn new() -> (
         Self,
         RouterSender,
@@ -68,7 +72,11 @@ impl Router {
         )
     }
 
+    /// Run message routing code.
     pub async fn run(mut self, mut quit_receiver: utils::QuitReceiver) {
+        // TODO: One select for &mut quit_receiver. Move other code to async
+        // block.
+
         loop {
             tokio::select! {
                 result = &mut quit_receiver => break result.unwrap(),
@@ -102,16 +110,19 @@ impl Router {
     }
 }
 
+/// Send messages to different components.
 #[derive(Debug, Clone)]
 pub struct RouterSender {
     sender: mpsc::Sender<RouterMessage>,
 }
 
 impl RouterSender {
+    /// Send message to `UiConnectionManager`.
     pub async fn send_ui_event(&mut self, event: UiEvent) {
         self.sender.send(RouterMessage::Ui(event)).await.unwrap()
     }
 
+    /// Send message to `AudioManager`.
     pub async fn send_audio_server_event(&mut self, event: AudioEvent) {
         self.sender
             .send(RouterMessage::AudioServer(event))
@@ -119,6 +130,7 @@ impl RouterSender {
             .unwrap()
     }
 
+    /// Send message to `DeviceManager`.
     pub async fn send_device_manager_event(&mut self, event: DeviceManagerEvent) {
         self.sender
             .send(RouterMessage::DeviceManager(event.into()))
@@ -126,6 +138,7 @@ impl RouterSender {
             .unwrap()
     }
 
+    /// Send `DeviceManager`'s internal event to `DeviceManager`.
     pub async fn send_dm_internal_event(&mut self, event: DmEvent) {
         self.sender
             .send(RouterMessage::DeviceManager(event))
@@ -133,6 +146,7 @@ impl RouterSender {
             .unwrap()
     }
 
+    /// Send event to `Router`. This method will block.
     pub fn send_router_blocking(&mut self, event: RouterEvent) {
         self.sender
             .blocking_send(RouterMessage::Router(event))
@@ -140,12 +154,14 @@ impl RouterSender {
     }
 }
 
+/// Receive routed messages.
 #[derive(Debug)]
 pub struct MessageReceiver<T> {
     receiver: mpsc::Receiver<T>,
 }
 
 impl<T> MessageReceiver<T> {
+    /// Create new `MessageReceiver`.
     pub fn new(receiver: mpsc::Receiver<T>) -> Self {
         Self { receiver }
     }

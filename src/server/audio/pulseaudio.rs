@@ -22,6 +22,7 @@ use super::AudioEvent;
 
 use crate::{config::Config, server::message_router::RouterSender};
 
+/// PulseAudio code events.
 #[derive(Debug)]
 pub enum AudioServerEvent {
     AudioEvent(AudioEvent),
@@ -110,35 +111,42 @@ impl AudioServer {
     }
 }
 
+/// Send events to PulseAudio code main loop.
 #[derive(Debug, Clone)]
 pub struct EventToAudioServerSender {
     sender: Sender<AudioServerEvent>,
 }
 
 impl EventToAudioServerSender {
+    // Create new `EventToAudioServerSender`.
     fn new(sender: Sender<AudioServerEvent>) -> Self {
         Self { sender }
     }
 
+    /// Send `AudioServerEvent`.
     pub fn send(&mut self, event: AudioServerEvent) {
         self.sender.send(event).unwrap();
     }
 
+    /// Send `PAEvent`.
     pub fn send_pa(&mut self, event: PAEvent) {
         self.send(AudioServerEvent::PAEvent(event));
     }
 
+    /// Send `PARecordingStreamEvent`.
     pub fn send_pa_record_stream_event(&mut self, event: PARecordingStreamEvent) {
         self.send_pa(PAEvent::RecordingStreamEvent(event));
     }
 }
 
+/// Handle to PulseAudio thread.
 pub struct PulseAudioThread {
     audio_thread: Option<JoinHandle<()>>,
     sender: EventToAudioServerSender,
 }
 
 impl PulseAudioThread {
+    /// Create and start new PulseAudio thread.
     pub async fn start(r_sender: RouterSender, config: Arc<Config>) -> Self {
         let (init_ok_sender, init_ok_receiver) = oneshot::channel();
 
@@ -154,6 +162,7 @@ impl PulseAudioThread {
         }
     }
 
+    /// Quit PulseAudio thread. Blocks untill the thread is closed.
     pub fn quit(&mut self) {
         self.sender.send(AudioServerEvent::RequestQuit);
 
@@ -161,6 +170,7 @@ impl PulseAudioThread {
         self.audio_thread.take().unwrap().join().unwrap();
     }
 
+    /// Send `AudioEvent` to PulseAudio thread.
     pub fn send_event(&mut self, a_event: AudioEvent) {
         self.sender.send(AudioServerEvent::AudioEvent(a_event))
     }

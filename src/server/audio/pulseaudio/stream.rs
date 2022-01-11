@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+//! PulseAudio audio stream code.
+
 use std::{
     convert::TryInto,
     io::{ErrorKind, Write},
@@ -16,6 +18,7 @@ use crate::server::{audio::pulseaudio::state::PAEvent, device::data::TcpSendHand
 
 use super::EventToAudioServerSender;
 
+/// PulseAudio recording stream events.
 #[derive(Debug)]
 pub enum PARecordingStreamEvent {
     StateChange,
@@ -23,6 +26,7 @@ pub enum PARecordingStreamEvent {
     Moved,
 }
 
+/// PulseAudio playback stream events.
 #[derive(Debug)]
 pub enum PAPlaybackStreamEvent {
     DataOverflow,
@@ -30,31 +34,44 @@ pub enum PAPlaybackStreamEvent {
     StateChange,
 }
 
+/// Recording stream processing errors.
 #[derive(Debug)]
 pub enum StreamError {
+    /// Sending data to the data stream failed.
     SocketError(std::io::Error),
+    /// Make sure that PulseAudio returned enough bytes for one sample when
+    /// encoding Opus.
     NotEnoughBytesForOneSample,
+    /// Opus encoder error.
     EncoderError(audiopus::Error),
 }
 
+/// Logic for audio data streams.
 pub struct PAStreamManager {
     record: Option<(Stream, TcpSendHandle)>,
     sender: EventToAudioServerSender,
-    recording_buffer: BytesMut,
+    /// Buffer used to buffer data which could not sent forward using single
+    /// write call.
+    data_write_buffer: BytesMut,
+    /// If false do not read PCM data from PulseAudio.
     enable_recording: bool,
+    /// If true send `PAEvent::StreamManagerQuitReady` when recording stream
+    /// closes.
     quit_requested: bool,
     encoder: Option<Encoder>,
+    /// Encoder input buffer.
     encoder_buffer: Vec<i16>,
-    // Opus documentation recommends size 4000.
+    /// Opus documentation recommends size 4000.
     encoder_output_buffer: Box<[u8; 4000]>,
 }
 
 impl PAStreamManager {
+    /// Create new `PAStreamManager`.
     pub fn new(sender: EventToAudioServerSender) -> Self {
         Self {
             record: None,
             sender,
-            recording_buffer: BytesMut::new(),
+            data_write_buffer: BytesMut::new(),
             enable_recording: true,
             quit_requested: false,
             encoder: None,
@@ -63,6 +80,7 @@ impl PAStreamManager {
         }
     }
 
+    /// Start recording.
     pub fn request_start_record_stream(
         &mut self,
         context: &mut Context,
@@ -97,6 +115,7 @@ impl PAStreamManager {
         let mut stream = Stream::new(context, "Jonect recording stream", &spec, None)
             .expect("Stream creation error");
 
+        // PulseAudio audio buffer settings.
         let buffer_settings = BufferAttr {
             maxlength: u32::MAX,
             tlength: u32::MAX,
@@ -130,11 +149,12 @@ impl PAStreamManager {
             s.send_pa_record_stream_event(PARecordingStreamEvent::Read(size));
         })));
 
-        self.recording_buffer.clear();
+        self.data_write_buffer.clear();
         self.record = Some((stream, send_handle));
         self.enable_recording = true;
     }
 
+    /// Handle `PARecordingStreamEvent::StateChange`.
     fn handle_recording_stream_state_change(&mut self) {
         use pulse::stream::State;
 
@@ -159,16 +179,18 @@ impl PAStreamManager {
         }
     }
 
+    /// Send data to the output stream. Data which can not be sent using single
+    /// write call will be buffered.
     fn handle_data(
         data: &[u8],
-        recording_buffer: &mut BytesMut,
+        data_write_buffer: &mut BytesMut,
         send_handle: &mut TcpSendHandle,
     ) -> Result<(), StreamError> {
         loop {
-            if recording_buffer.has_remaining() {
-                match send_handle.write(recording_buffer.chunk()) {
+            if data_write_buffer.has_remaining() {
+                match send_handle.write(data_write_buffer.chunk()) {
                     Ok(count) => {
-                        recording_buffer.advance(count);
+                        data_write_buffer.advance(count);
                     }
                     Err(e) => {
                         if ErrorKind::WouldBlock == e.kind() {
@@ -187,7 +209,7 @@ impl PAStreamManager {
             Ok(count) => {
                 if count < data.len() {
                     let remaining_bytes = &data[count..];
-                    recording_buffer.extend_from_slice(remaining_bytes);
+                    data_write_buffer.extend_from_slice(remaining_bytes);
                     println!(
                         "Recording state: buffering {} bytes.",
                         remaining_bytes.len()
@@ -196,7 +218,7 @@ impl PAStreamManager {
             }
             Err(e) => {
                 if ErrorKind::WouldBlock == e.kind() {
-                    recording_buffer.extend_from_slice(data);
+                    data_write_buffer.extend_from_slice(data);
                 } else {
                     return Err(StreamError::SocketError(e));
                 }
@@ -206,12 +228,13 @@ impl PAStreamManager {
         Ok(())
     }
 
+    /// Encode PCM data and send encoded audio forward.
     fn handle_data_with_encoding(
         data: &[u8],
         encoding_buffer: &mut Vec<i16>,
         encoder_output_buffer: &mut [u8; 4000],
         encoder: &mut Encoder,
-        recording_buffer: &mut BytesMut,
+        data_write_buffer: &mut BytesMut,
         send_handle: &mut TcpSendHandle,
     ) -> Result<(), StreamError> {
         if data.len() % 2 != 0 {
@@ -236,10 +259,10 @@ impl PAStreamManager {
 
                 let protocol_size: i32 = size.try_into().unwrap();
 
-                Self::handle_data(&protocol_size.to_be_bytes(), recording_buffer, send_handle)?;
+                Self::handle_data(&protocol_size.to_be_bytes(), data_write_buffer, send_handle)?;
                 Self::handle_data(
                     &encoder_output_buffer[..size],
-                    recording_buffer,
+                    data_write_buffer,
                     send_handle,
                 )?;
             }
@@ -248,6 +271,7 @@ impl PAStreamManager {
         Ok(())
     }
 
+    /// Handle `PARecordingStreamEvent::Read`.
     fn handle_recording_stream_read(&mut self) {
         let (r, ref mut send_handle) = self.record.as_mut().unwrap();
 
@@ -270,11 +294,11 @@ impl PAStreamManager {
                             &mut self.encoder_buffer,
                             &mut self.encoder_output_buffer,
                             encoder,
-                            &mut self.recording_buffer,
+                            &mut self.data_write_buffer,
                             send_handle,
                         )
                     } else {
-                        Self::handle_data(data, &mut self.recording_buffer, send_handle)
+                        Self::handle_data(data, &mut self.data_write_buffer, send_handle)
                     };
 
                     match result {
@@ -295,6 +319,7 @@ impl PAStreamManager {
         }
     }
 
+    /// Handle `PARecordingStreamEvent`.
     pub fn handle_recording_stream_event(&mut self, event: PARecordingStreamEvent) {
         match event {
             PARecordingStreamEvent::StateChange => {
@@ -311,12 +336,15 @@ impl PAStreamManager {
         }
     }
 
+    /// Disconnect recording stream.
     pub fn stop_recording(&mut self) {
         if let Some((stream, _)) = self.record.as_mut() {
             stream.disconnect().unwrap();
         }
     }
 
+    /// Request quit. Event `PAEvent::StreamManagerQuitReady` will be sent when
+    /// `PAStreamManager` can be dropped.
     pub fn request_quit(&mut self) {
         self.quit_requested = true;
 

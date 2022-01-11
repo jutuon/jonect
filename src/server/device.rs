@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+//! Connect devices (clients) to the server.
+
 pub mod data;
 pub mod protocol;
 pub mod state;
@@ -34,18 +36,24 @@ use super::{
     ui::UiEvent,
 };
 
+/// TCP socket errors which disables TCP support.
 #[derive(Debug)]
 pub enum TcpSupportError {
     ListenerCreationError(io::Error),
     AcceptError(io::Error),
 }
 
+/// `DeviceManager`'s internal event type.
 #[derive(Debug)]
 enum DeviceManagerInternalEvent {
     PublicEvent(DeviceManagerEvent),
     RemoveConnection(ConnectionId),
 }
 
+/// Wrapper for `DeviceManagerInternalEvent`.
+///
+/// This makes possible sending public `DeviceManagerEvent`s from other code
+/// while keeping `DeviceManagerInternalEvent` private.
 #[derive(Debug)]
 pub struct DmEvent {
     value: DeviceManagerInternalEvent,
@@ -58,17 +66,20 @@ impl From<DeviceManagerEvent> for DmEvent {
         }
     }
 }
+
 impl From<DeviceManagerInternalEvent> for DmEvent {
     fn from(value: DeviceManagerInternalEvent) -> Self {
         Self { value }
     }
 }
 
+/// Device manager events.
 #[derive(Debug)]
 pub enum DeviceManagerEvent {
     RunDeviceConnectionPing,
 }
 
+/// Logic for connecting devices (clients) to the server.
 pub struct DeviceManager {
     r_sender: RouterSender,
     receiver: MessageReceiver<DmEvent>,
@@ -79,6 +90,7 @@ pub struct DeviceManager {
 }
 
 impl DeviceManager {
+    /// Start new `DeviceManager` task.
     pub fn task(
         r_sender: RouterSender,
         receiver: MessageReceiver<DmEvent>,
@@ -102,6 +114,7 @@ impl DeviceManager {
         (tokio::spawn(task), quit_sender)
     }
 
+    /// Run device manager logic.
     pub async fn run(mut self, mut quit_receiver: QuitReceiver) {
         let listener = match TcpListener::bind(config::DEVICE_SOCKET_ADDRESS).await {
             Ok(listener) => listener,
@@ -121,6 +134,8 @@ impl DeviceManager {
         };
 
         let mut ping_timer = tokio::time::interval(Duration::from_secs(1));
+
+        // TODO: Use single quit select and move other logic to async block.
 
         loop {
             tokio::select! {
@@ -153,6 +168,7 @@ impl DeviceManager {
         }
     }
 
+    /// Handle TCP listener accept.
     pub async fn handle_tcp_listener_accept(
         &mut self,
         result: std::io::Result<(tokio::net::TcpStream, std::net::SocketAddr)>,
@@ -189,6 +205,7 @@ impl DeviceManager {
         }
     }
 
+    /// Handle `DmEvent`.
     pub async fn handle_dm_event(&mut self, event: DmEvent) {
         match event.value {
             DeviceManagerInternalEvent::PublicEvent(event) => match event {
@@ -204,6 +221,7 @@ impl DeviceManager {
         }
     }
 
+    /// Handle ping timer tick.
     pub async fn handle_ping_timer_tick(&mut self) {
         for connection in self.connections.values_mut() {
             connection.send(DeviceEvent::SendPing).await;
