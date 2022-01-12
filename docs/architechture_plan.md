@@ -1,5 +1,7 @@
 # Architecture of the Jonect Android Application
 
+This document is mostly written before there was any coding done.
+
 ## Application Description and Mission
 
 Jonect is an all-in-one smartphone application and computer server software
@@ -40,10 +42,11 @@ data capturing harder.
 
 ## Prototype Architecture
 
-Jonect uses layers to implement all possible data transfer options.
-Android platform restricts application and computer communication possibilities
-to TCP and UDP sockets. The prototype will use TCP to simplify the development
-effort.
+Jonect uses layers to implement all possible data transfer options. Android
+platform restricts application and computer communication possibilities to TCP
+and UDP sockets. The prototype will use TCP to simplify the development effort.
+(Correction 2022-01-12: USB data connection with Android USB accessory mode
+should be also possible.)
 
 * Application data layer
 * Encryption layer: TLS or no encryption
