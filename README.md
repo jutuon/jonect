@@ -49,7 +49,9 @@ Server uses TCP port 8081 for GUI connection. Only localhost connections are
 possible.
 
 1. Decide what audio stream the server will send to the client. By default the
-   default recording output will be recorded when audio streaming starts.
+   default recording output will be recorded when audio streaming starts. Or
+   possibly the previously selected audio stream if PulseAudio Volume Control
+   GUI program is used to select the audio stream.
 
    Opionally select PulseAudio monitor stream to record when audio streaming
    starts. This can be done selecting PulseAudio monitor source with command
