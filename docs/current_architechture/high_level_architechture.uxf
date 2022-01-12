@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<diagram program="umlet" version="13.3">
+  <zoom_level>8</zoom_level>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>280</x>
+      <y>264</y>
+      <w>80</w>
+      <h>72</h>
+    </coordinates>
+    <panel_attributes>
+
+Server</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>352</x>
+      <y>264</y>
+      <w>192</w>
+      <h>32</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;-&gt;
+JSON over TCP</panel_attributes>
+    <additional_attributes>220.0;20.0;10.0;20.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>528</x>
+      <y>264</y>
+      <w>80</w>
+      <h>72</h>
+    </coordinates>
+    <panel_attributes>
+
+Android</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>352</x>
+      <y>304</y>
+      <w>192</w>
+      <h>32</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;-
+Audio data over TCP</panel_attributes>
+    <additional_attributes>220.0;20.0;10.0;20.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>56</x>
+      <y>264</y>
+      <w>80</w>
+      <h>72</h>
+    </coordinates>
+    <panel_attributes>
+
+GUI</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>128</x>
+      <y>288</y>
+      <w>168</w>
+      <h>32</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;-&gt;
+JSON over TCP</panel_attributes>
+    <additional_attributes>190.0;20.0;10.0;20.0</additional_attributes>
+  </element>
+</diagram>
