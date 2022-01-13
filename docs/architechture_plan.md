@@ -1,6 +1,8 @@
 # Architecture of the Jonect Android Application
 
-This document is mostly written before there was any coding done.
+This is old plan for the project and does not complately represent the current
+(2022-01-13) state or future of the project. It is mostly written before there
+was any coding done.
 
 ## Application Description and Mission
 
