@@ -1,0 +1,3 @@
+[submodule "libjonect"]
+	path = libjonect
+	url = https://github.com/jutuon/libjonect

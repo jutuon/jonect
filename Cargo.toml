@@ -29,3 +29,6 @@ package = "libpulse-glib-binding"
 [dependencies.gtk]
 version = "0.14.0"
 features = ["v3_20"]
+
+[workspace]
+members = ["jonect-service", "libjonect"]
