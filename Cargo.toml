@@ -16,7 +16,7 @@ tokio-util = "0.6.7"
 tokio-stream = "0.1.7"
 async-stream = "0.3.2"
 bytes = "1.0.1"
-audiopus = "0.3.0-rc.0"
+libjonect = { path = "./libjonect" }
 
 [dependencies.pulse]
 version = "2.24"
@@ -31,4 +31,4 @@ version = "0.14.0"
 features = ["v3_20"]
 
 [workspace]
-members = ["jonect-service", "libjonect"]
+members = ["libjonect"]

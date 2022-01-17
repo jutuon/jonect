@@ -12,7 +12,7 @@ use self::logic::ServerConnectionHandle;
 
 use super::Ui;
 
-use crate::server::ui::UiProtocolFromServerToUi;
+use libjonect::ui::UiProtocolFromServerToUi;
 use crate::{config::Config, settings::SettingsManager};
 
 use gtk::gio::prelude::*;

@@ -12,13 +12,15 @@ use tokio::{
     sync::{mpsc, oneshot},
 };
 
-use crate::{
-    config::{TestClientConfig, EVENT_CHANNEL_SIZE},
-    server::device::protocol::ServerMessage,
+use libjonect::{
+    device::protocol::{ServerMessage, ClientInfo, ClientMessage},
     utils::{Connection, ConnectionEvent},
 };
 
-use crate::server::device::protocol::{ClientInfo, ClientMessage};
+use crate::{
+    config::{EVENT_CHANNEL_SIZE, TestClientConfig},
+};
+
 
 use std::{
     net::{SocketAddr, ToSocketAddrs},

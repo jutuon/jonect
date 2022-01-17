@@ -6,7 +6,7 @@
 
 pub mod gtk_ui;
 
-use crate::{config::Config, settings::SettingsManager};
+use crate::{settings::SettingsManager, config::Config};
 
 /// Trait for starting different UI implementations.
 pub trait Ui {

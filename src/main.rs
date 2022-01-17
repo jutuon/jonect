@@ -2,18 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-mod client;
 mod config;
-mod server;
 mod settings;
 mod ui;
-mod utils;
+mod client;
 
 use std::process;
 
-use crate::{client::TestClient, server::Server};
-
+use libjonect::{Server, config::ServerConfig};
 use ui::{gtk_ui::GtkUi, Ui};
+
+use crate::client::TestClient;
 
 /// Main function. Program starts here.
 fn main() {
@@ -47,5 +46,8 @@ fn main() {
     }
 
     // Run server mode.
-    Server::run(config);
+    Server::run(ServerConfig {
+        pa_source_name: config.pa_source_name,
+        encode_opus: config.encode_opus,
+    });
 }

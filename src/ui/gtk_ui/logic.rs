@@ -7,9 +7,9 @@
 use super::FromServerToUiSender;
 use std::{thread::JoinHandle, time::Duration};
 
-use crate::{
-    server::ui::{UiProtocolFromServerToUi, UiProtocolFromUiToServer},
-    utils::QuitReceiver,
+use libjonect::{
+    ui::{UiProtocolFromServerToUi, UiProtocolFromUiToServer},
+    utils::{QuitReceiver, Connection, ConnectionEvent},
 };
 
 use tokio::{
@@ -20,7 +20,6 @@ use tokio::{
 
 use crate::{
     config::EVENT_CHANNEL_SIZE,
-    utils::{Connection, ConnectionEvent},
 };
 
 /// Server connection thread handle.
