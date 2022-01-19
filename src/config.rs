@@ -11,15 +11,6 @@ use clap::{App, Arg, SubCommand};
 /// Size for event channel buffers.
 pub const EVENT_CHANNEL_SIZE: usize = 32;
 
-/// Socket address for device JSON connections.
-pub const DEVICE_SOCKET_ADDRESS: &str = "0.0.0.0:8080";
-
-/// Socket address for data connections.
-pub const AUDIO_DATA_SOCKET_ADDRESS: &str = "0.0.0.0:8082";
-
-/// Socket address UI connection.
-pub const UI_SOCKET_ADDRESS: &str = "127.0.0.1:8081";
-
 /// Command line arguments for client mode.
 #[derive(Debug, Clone)]
 pub struct TestClientConfig {

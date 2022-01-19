@@ -123,13 +123,11 @@ impl ServerClient {
         ui_receiver: &mut mpsc::Receiver<UiProtocolFromUiToServer>,
         mut quit_receiver: &mut QuitReceiver,
     ) -> QuitReason {
-        let (read_half, write_half) = stream.into_split();
-
         let (sender, mut connections_receiver) =
             mpsc::channel::<ConnectionEvent<UiProtocolFromServerToUi>>(EVENT_CHANNEL_SIZE);
 
         let connection_handle =
-            Connection::spawn_connection_task(0, read_half, write_half, sender.into());
+            Connection::spawn_connection_task(stream, sender.into());
 
         let quit_reason = loop {
             tokio::select! {
@@ -148,17 +146,17 @@ impl ServerClient {
                 }
                 event = connections_receiver.recv() => {
                     match event.unwrap() {
-                        ConnectionEvent::ReadError(id, error) => {
-                            eprintln!("Connection id {} read error {:?}", id, error);
+                        ConnectionEvent::ReadError(error) => {
+                            eprintln!("UI connection read error {:?}", error);
                             ui_sender.send_server_disconnected_message();
                             break QuitReason::ConnectionError;
                         }
-                        ConnectionEvent::WriteError(id, error) => {
-                            eprintln!("Connection id {} write error {:?}", id, error);
+                        ConnectionEvent::WriteError(error) => {
+                            eprintln!("UI connection write error {:?}", error);
                             ui_sender.send_server_disconnected_message();
                             break QuitReason::ConnectionError;
                         }
-                        ConnectionEvent::Message(_, message) => {
+                        ConnectionEvent::Message(message) => {
                             ui_sender.send(message);
                         }
                     }

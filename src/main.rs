@@ -5,14 +5,11 @@
 mod config;
 mod settings;
 mod ui;
-mod client;
 
 use std::process;
 
-use libjonect::{Server, config::ServerConfig};
+use libjonect::{Logic, config::LogicConfig};
 use ui::{gtk_ui::GtkUi, Ui};
-
-use crate::client::TestClient;
 
 /// Main function. Program starts here.
 fn main() {
@@ -23,9 +20,14 @@ fn main() {
         process::exit(0);
     }
 
-    // Run test client mode.
-    if let Some(config) = config.test_client_config {
-        TestClient::new(config).run();
+    if let Some(client_config) = config.test_client_config {
+        Logic::run(LogicConfig {
+            pa_source_name: config.pa_source_name,
+            encode_opus: config.encode_opus,
+            connect_address: Some(client_config.address),
+            enable_connection_listening: false,
+            enable_ping: false,
+        });
         return;
     }
 
@@ -45,9 +47,11 @@ fn main() {
         return;
     }
 
-    // Run server mode.
-    Server::run(ServerConfig {
+    Logic::run(LogicConfig {
         pa_source_name: config.pa_source_name,
         encode_opus: config.encode_opus,
+        connect_address: None,
+        enable_connection_listening: true,
+        enable_ping: true,
     });
 }
