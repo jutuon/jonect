@@ -11,12 +11,38 @@ use std::process;
 use libjonect::{Logic, config::LogicConfig};
 use ui::{gtk_ui::GtkUi, Ui};
 
+use log::{info, error, debug};
+
+pub struct StandardErrorLogger;
+
+impl log::Log for StandardErrorLogger {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool {
+        true
+    }
+
+    fn flush(&self) {}
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            eprintln!(
+                "{} Location: {}:{}",
+                record.args(),
+                record.module_path().unwrap_or_default(),
+                record.line().unwrap_or_default(),
+            );
+        }
+    }
+}
+
 /// Main function. Program starts here.
 fn main() {
+    log::set_logger(&StandardErrorLogger).unwrap();
+    log::set_max_level(log::LevelFilter::Trace);
+
     let config = config::parse_cmd_args();
 
     if config.test {
-        println!("test");
+        info!("test");
         process::exit(0);
     }
 
@@ -27,19 +53,19 @@ fn main() {
             connect_address: Some(client_config.address),
             enable_connection_listening: false,
             enable_ping: false,
-        });
+        }, None);
         return;
     }
 
     let settings = match settings::SettingsManager::load_or_create_settings_file() {
         Ok(settings) => settings,
         Err(e) => {
-            eprintln!("Could not load the settings file. Error: {:?}", e);
+            error!("Could not load the settings file. Error: {:?}", e);
             process::exit(1);
         }
     };
 
-    println!("{:#?}", settings.get());
+    debug!("{:#?}", settings.get());
 
     // Run GUI mode.
     if config.gui.is_some() {
@@ -53,5 +79,5 @@ fn main() {
         connect_address: None,
         enable_connection_listening: true,
         enable_ping: true,
-    });
+    }, None);
 }

@@ -4,6 +4,8 @@
 
 use libjonect::ui::{UiProtocolFromServerToUi, UiProtocolFromUiToServer};
 
+use log::{error, info};
+
 use super::logic::ServerConnectionHandle;
 
 use gtk::gio::prelude::*;
@@ -86,19 +88,23 @@ impl App {
         match e {
             UiProtocolFromServerToUi::Message(s) => {
                 self.text.set_text(&s);
-                println!("{}", s);
+                info!("{}", s);
             }
+            UiProtocolFromServerToUi::DeviceConnectionEstablished => (),
+            UiProtocolFromServerToUi::DeviceConnectionDisconnected => (),
+            UiProtocolFromServerToUi::DeviceConnectionDisconnectedWithError => (),
+            UiProtocolFromServerToUi::AndroidGetNativeSampleRate {..} => (),
         }
     }
 
     /// Handler for `UiEvent::ConnectToServerFailed`.
     pub fn handle_connect_to_server_failed(&mut self) {
-        eprintln!("Connecting to the server failed.");
+        error!("Connecting to the server failed.");
     }
 
     /// Handler for `UiEvent::ServerDisconnected`.
     pub fn handle_server_disconnect(&mut self) {
-        eprintln!("Server disconnected.")
+        error!("Server disconnected.")
     }
 
     /// Handler for `UiEvent::ButtonClicked(id)`.

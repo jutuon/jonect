@@ -4,6 +4,8 @@
 
 //! Connection to the server.
 
+use log::{error};
+
 use super::FromServerToUiSender;
 use std::{thread::JoinHandle, time::Duration};
 
@@ -102,7 +104,7 @@ impl ServerClient {
                             }
                         }
                         Err(e) => {
-                            eprintln!("Error: {}", e);
+                            error!("Error: {}", e);
                             ui_sender.send_connect_to_server_failed();
                         }
                     }
@@ -147,12 +149,12 @@ impl ServerClient {
                 event = connections_receiver.recv() => {
                     match event.unwrap() {
                         ConnectionEvent::ReadError(error) => {
-                            eprintln!("UI connection read error {:?}", error);
+                            error!("UI connection read error {:?}", error);
                             ui_sender.send_server_disconnected_message();
                             break QuitReason::ConnectionError;
                         }
                         ConnectionEvent::WriteError(error) => {
-                            eprintln!("UI connection write error {:?}", error);
+                            error!("UI connection write error {:?}", error);
                             ui_sender.send_server_disconnected_message();
                             break QuitReason::ConnectionError;
                         }
