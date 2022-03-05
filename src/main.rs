@@ -53,6 +53,7 @@ fn main() {
             connect_address: Some(client_config.address),
             enable_connection_listening: false,
             enable_ping: false,
+            enable_udp_audio_data_sending: config.udp_audio,
         }, None);
         return;
     }
@@ -79,5 +80,6 @@ fn main() {
         connect_address: None,
         enable_connection_listening: true,
         enable_ping: true,
+        enable_udp_audio_data_sending: config.udp_audio,
     }, None);
 }

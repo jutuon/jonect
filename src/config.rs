@@ -26,6 +26,7 @@ pub struct Config {
     pub test_client_config: Option<TestClientConfig>,
     pub gui: Option<()>,
     pub encode_opus: bool,
+    pub udp_audio: bool,
 }
 
 /// Parse command line args. Program may exit when running this.
@@ -42,6 +43,12 @@ pub fn parse_cmd_args() -> Config {
                 .short("e")
                 .long("encode-opus")
                 .help("Encode audio with Opus codec."),
+        )
+        .arg(
+            Arg::with_name("udp-audio")
+                .short("u")
+                .long("udp-audio")
+                .help("Send audio over UDP protocol."),
         )
         .arg(
             Arg::with_name("pa-source-name")
@@ -83,5 +90,6 @@ pub fn parse_cmd_args() -> Config {
         test_client_config,
         gui,
         encode_opus: matches.is_present("encode-opus"),
+        udp_audio: matches.is_present("udp-audio"),
     }
 }
