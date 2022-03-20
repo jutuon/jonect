@@ -93,7 +93,8 @@ impl App {
             UiProtocolFromServerToUi::DeviceConnectionEstablished => (),
             UiProtocolFromServerToUi::DeviceConnectionDisconnected => (),
             UiProtocolFromServerToUi::DeviceConnectionDisconnectedWithError => (),
-            UiProtocolFromServerToUi::AndroidGetNativeSampleRate {..} => (),
+            UiProtocolFromServerToUi::AndroidGetNativeSampleRate {..} |
+            UiProtocolFromServerToUi::AndroidGetUsbAccessoryFileDescriptor => (),
         }
     }
 
