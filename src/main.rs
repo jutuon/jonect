@@ -80,7 +80,7 @@ fn main() {
         encode_opus: config.encode_opus,
         connect_address: None,
         enable_connection_listening: true,
-        enable_ping: true,
+        enable_ping: false,
         enable_udp_audio_data_sending: config.udp_audio,
         print_first_audio_packet_bytes: config.print_audio_bytes,
     }, None);
